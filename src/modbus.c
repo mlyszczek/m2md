@@ -310,7 +310,7 @@ static void *m2md_modbus_server_thread
         case M2MD_SERVER_MSG_POLL:
         {
             uint16_t  rval;   /* read value from modbus */
-            int32_t   data;   /* data to send over mqtt */
+            float     data;   /* data to send over mqtt */
             int       ret;    /* return code from functions */
             int       tl;     /* topic length - from snprintf */
             int       regind; /* register position in reg2topic map */
@@ -361,8 +361,8 @@ static void *m2md_modbus_server_thread
                  * to reconnect to the server.
                  */
 
-                el_print(ELE, "poll: modbus_* function %d %s", msg.data.poll.func,
-                        modbus_strerror(errno));
+                el_print(ELE, "poll: modbus_* function %d %s",
+                        msg.data.poll.func, modbus_strerror(errno));
                 modbus_close(server->modbus);
 
                 if (m2md_modbus_server_reconnect(server->msgq) != 0)
@@ -400,10 +400,13 @@ static void *m2md_modbus_server_thread
                 continue;
             }
 
-            /* prepare data to send, it's so much work, isn't it?
+            /* prepare data to send, received data is just imaginary value
+             * without unit, we apply scale factor to convert value to
+             * known unit.
              */
 
-            data = rval;
+            data = rval *
+                m2md_reg2topic_map[server->mfr].elements[regind].scale;
 
             /* we are ready to publish message, so what are you
              * waiting for? hit em with it!

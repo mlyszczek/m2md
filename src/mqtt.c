@@ -764,4 +764,5 @@ int m2md_mqtt_cleanup
     mosquitto_disconnect(mqtt);
     mosquitto_destroy(mqtt);
     mosquitto_lib_cleanup();
+    return 0;
 }

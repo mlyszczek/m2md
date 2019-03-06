@@ -38,11 +38,11 @@
 
 const struct m2md_reg2topic_map_element victron[] =
 {
-    { 840, "battery/voltage" },
-    { 841, "battery/current" },
-    { 842, "battery/power" },
-    { 843, "battery/soc" },
-    { 3420, "in/digital/count" }
+    { 0.1,  840, "battery/voltage" },
+    { 0.1,  841, "battery/current" },
+    {   1,  842, "battery/power" },
+    {   1,  843, "battery/soc" },
+    {   1, 3420, "in/digital/count" }
 };
 
 /* order of mfrs here must match order of mfrs in enum m2md_mfr
