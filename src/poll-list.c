@@ -355,6 +355,7 @@ int m2md_pl_delete
         /* now '1' is detached from anything and can be safely freed
          */
 
+        free(node->data.topic);
         free(node);
         return 0;
     }
@@ -388,6 +389,7 @@ int m2md_pl_delete
      * without destroying list
      */
 
+    free(node->data.topic);
     free(node);
     return 0;
 }

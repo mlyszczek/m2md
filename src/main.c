@@ -20,7 +20,8 @@
 #include <stddef.h>
 #include <signal.h>
 #include <pthread.h>
-
+#include <stdlib.h>
+#include <mosquitto.h>
 
 #include "modbus.h"
 #include "mqtt.h"
@@ -75,6 +76,436 @@ static void sigusr_handler
 )
 {
     (void)signo;
+}
+
+
+static int m2md_get_number
+(
+    const char  *num,  /* string to convert to number */
+    long        *n     /* converted num will be placed here */
+)
+{
+    const char  *ep;   /* endptr for strtol function */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+
+    if (*num == '\0')
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *n = strtol(num, (char **)&ep, 10);
+
+    if (*ep != '\0')
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (*n == LONG_MAX || *n == LONG_MIN)
+    {
+        errno = ERANGE;
+        return -1;
+    }
+
+    return 0;
+}
+
+static int m2md_get_float
+(
+    const char  *num,  /* string to convert to float */
+    float       *n     /* converted num will be placed here */
+)
+{
+    const char  *ep;   /* endptr for strtol function */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+
+    if (*num == '\0')
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *n = strtof(num, (char **)&ep);
+
+    if (*ep != '\0')
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (*n == LONG_MAX || *n == LONG_MIN)
+    {
+        errno = ERANGE;
+        return -1;
+    }
+
+    return 0;
+}
+
+
+static int m2md_parse_poll_file
+(
+    void
+)
+{
+    const char          *file;
+    FILE                *f;
+    char                 line[4096];
+    struct m2md_pl_data  poll;
+    char                 ip[INET_ADDRSTRLEN];
+    int                  port;
+    char                *linetok;
+    int                  lineno;
+    long                 value;
+    float                floatval;
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+#define NEXT_TOKEN(name) \
+    if ((linetok = strtok(NULL, ",")) == NULL) \
+    { \
+        el_print(ELW, "[%s:%d] missing field: %s", file, lineno, name); \
+        continue; \
+    }
+
+
+
+    file = m2md_cfg->modbus_poll_list;
+    if ((f = fopen(file, "r")) == NULL)
+    {
+        el_perror(ELC, "fopen(%s)", file);
+        return -1;
+    }
+
+    for (lineno = 1;;++lineno)
+    {
+        /* set last byte of line buffer to something other than
+         * '\0' to know whether fgets have overwritten it or not
+         */
+
+        line[sizeof(line) - 1] = 0xaa;
+
+        /* try to read whole line into buffer
+         */
+
+        if (fgets(line, sizeof(line), f) == NULL)
+        {
+            if (feof(f))
+            {
+                /* end of file reached, and fgets didn't write
+                 * anything into line - we parsed whole file
+                 */
+
+                return 0;
+            }
+
+            el_perror(ELC, "fgets(%s)", file);
+            return -1;
+        }
+
+        if (line[sizeof(line) - 1] == '\0' && line[sizeof(line) - 2] != '\n')
+        {
+            /* fgets overwritted last byte with '\0', which means
+             * it filled whole line buffer with data
+             *
+             * AND
+             *
+             * last character in string is not a new line
+             * character, so our line buffer turns out to be too
+             * small and we couln't read whole line into buffer.
+             */
+
+            el_print(ELC, "[%s:%d], line is longer than %ld, ignoring line",
+                    file, lineno, (long)(sizeof(line) - 2));
+            continue;
+        }
+
+        if (line[0] == '\n' || line[0] == '#')
+        {
+            /* line is empty (only new line character is present)
+             *
+             * or
+             *
+             * line is a comment (starting from #)
+             */
+
+            continue;
+        }
+
+        /* remove last newline character from line
+         */
+
+        line[strlen(line) - 1] = '\0';
+
+        /* now that we have full line, we can parse fields in it
+         */
+
+
+        /* ==============================================================
+             _                      __     __
+            (_)____     ____ _ ____/ /____/ /_____ ___   _____ _____
+           / // __ \   / __ `// __  // __  // ___// _ \ / ___// ___/
+          / // /_/ /  / /_/ // /_/ // /_/ // /   /  __/(__  )(__  )
+         /_// .___/   \__,_/ \__,_/ \__,_//_/    \___//____//____/
+           /_/
+           ============================================================== */
+
+
+        if ((linetok = strtok(line, ",")) == NULL)
+        {
+            el_print(ELW, "[%s:%d] no fields found", file, lineno);
+            continue;
+        }
+
+
+        if (strlen(linetok) > sizeof(ip))
+        {
+            el_print(ELW, "%s:%d, invalid ip address: %s",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        strcpy(ip, linetok);
+
+
+        /* ==============================================================
+                                                  __
+                             ____   ____   _____ / /_
+                            / __ \ / __ \ / ___// __/
+                           / /_/ // /_/ // /   / /_
+                          / .___/ \____//_/    \__/
+                         /_/
+           ============================================================== */
+
+
+        NEXT_TOKEN("port");
+
+        if (m2md_get_number(linetok, &value) != 0)
+        {
+            el_print(ELW, "[%s:%d] invalid port %s", file, lineno, linetok);
+            continue;
+        }
+
+        if (value < 1 || 65535 < value)
+        {
+            el_print(ELW, "[%s:%d] port is out of range [1,65535]",
+                    file, lineno);
+            continue;
+        }
+
+        port = value;
+
+
+        /* ==============================================================
+                           __                       _      __
+                    _____ / /____ _ _   __ ___     (_)____/ /
+                   / ___// // __ `/| | / // _ \   / // __  /
+                  (__  )/ // /_/ / | |/ //  __/  / // /_/ /
+                 /____//_/ \__,_/  |___/ \___/  /_/ \__,_/
+
+           ============================================================== */
+
+
+        NEXT_TOKEN("slave id");
+
+        if (m2md_get_number(linetok, &value) != 0)
+        {
+            el_print(ELW, "[%s:%d], invalid slave id: %s",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        if (value < 0 || 255< value)
+        {
+            el_print(ELW, "[%s:%d] slave id is out of range [0,255]",
+                    file, lineno);
+            continue;
+        }
+
+        poll.uid = value;
+
+
+        /* ==============================================================
+                                      _        __
+                  _____ ___   ____ _ (_)_____ / /_ ___   _____
+                 / ___// _ \ / __ `// // ___// __// _ \ / ___/
+                / /   /  __// /_/ // /(__  )/ /_ /  __// /
+               /_/    \___/ \__, //_//____/ \__/ \___//_/
+                           /____/
+           ============================================================== */
+
+
+        NEXT_TOKEN("register");
+
+        if (m2md_get_number(linetok, &value) != 0)
+        {
+            el_print(ELW, "[%s:%d], invalid register number %s",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        if (value < 0 || 65535 < value)
+        {
+            el_print(ELW, "[%s:%d] register number is out of range [0,65535]",
+                    file, lineno);
+            continue;
+        }
+
+        poll.reg = value;
+
+
+        /* ==============================================================
+                   ____                     __   _
+                  / __/__  __ ____   _____ / /_ (_)____   ____
+                 / /_ / / / // __ \ / ___// __// // __ \ / __ \
+                / __// /_/ // / / // /__ / /_ / // /_/ // / / /
+               /_/   \__,_//_/ /_/ \___/ \__//_/ \____//_/ /_/
+
+           ============================================================== */
+
+
+        NEXT_TOKEN("modbus functions");
+
+        if (m2md_get_number(linetok, &value) != 0)
+        {
+            el_print(ELW, "[%s:%d], invalid modbus function: %s",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        if (value < 0 || 255 < value)
+        {
+            el_print(ELW, "[%s:%d] modbus function is out of range [0,255]",
+                    file, lineno);
+            continue;
+        }
+
+        poll.func = value;
+
+
+    /* ==================================================================
+                                               __
+                           _____ _____ ____ _ / /___
+                          / ___// ___// __ `// // _ \
+                         (__  )/ /__ / /_/ // //  __/
+                        /____/ \___/ \__,_//_/ \___/
+
+       ================================================================== */
+
+
+        NEXT_TOKEN("scale factor");
+
+        if (m2md_get_float(linetok, &floatval) != 0)
+        {
+            el_print(ELW, "[%s:%d] invalid scale factor: %s",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        poll.scale = floatval;
+
+
+        /* ==============================================================
+                                    __ __
+                     ____   ____   / // /  _____ ___   _____
+                    / __ \ / __ \ / // /  / ___// _ \ / ___/
+                   / /_/ // /_/ // // /  (__  )/  __// /__
+                  / .___/ \____//_//_/  /____/ \___/ \___/
+                 /_/
+           ============================================================== */
+
+
+        NEXT_TOKEN("poll seconds");
+
+        if (m2md_get_number(linetok, &value) != 0)
+        {
+            el_print(ELW, "[%s:%d], invalid poll seconds: %s",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        if (value < 0)
+        {
+            el_print(ELW, "[%s:%d] poll seconds is out of range [0,inf)",
+                    file, lineno);
+            continue;
+        }
+
+        poll.poll_time.tv_sec = value;
+
+
+        /* ==============================================================
+                         __ __              _  __ __ _
+          ____   ____   / // /  ____ ___   (_)/ // /(_)_____ ___   _____
+         / __ \ / __ \ / // /  / __ `__ \ / // // // // ___// _ \ / ___/
+        / /_/ // /_/ // // /  / / / / / // // // // /(__  )/  __// /__
+       / .___/ \____//_//_/  /_/ /_/ /_//_//_//_//_//____/ \___/ \___/
+      /_/
+           ============================================================== */
+
+
+        NEXT_TOKEN("poll milliseconds");
+
+        if (m2md_get_number(linetok, &value) != 0)
+        {
+            el_print(ELW, "[%s:%d], invalid poll milliseconds: %s",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        if (value < 0 || 999 < value)
+        {
+            el_print(ELW, "[%s:%d] poll milliseconds is out of range "
+                    "[0,999]", file, lineno);
+            continue;
+        }
+
+        poll.poll_time.tv_nsec = value * 1000000l;
+
+
+        /* ==============================================================
+                           __                 _
+                          / /_ ____   ____   (_)_____
+                         / __// __ \ / __ \ / // ___/
+                        / /_ / /_/ // /_/ // // /__
+                        \__/ \____// .___//_/ \___/
+                                  /_/
+           ============================================================== */
+
+
+        NEXT_TOKEN("topic");
+
+        if (strlen(linetok) > M2MD_TOPIC_MAX)
+        {
+            el_print(ELW, "[%s:%d] topic is too long, max is %d",
+                    file, lineno, M2MD_TOPIC_MAX);
+            continue;
+        }
+
+        if (mosquitto_sub_topic_check(linetok) != 0)
+        {
+            el_print(ELW, "[%s:%d] topic %s is not valid mqtt topic",
+                    file, lineno, linetok);
+            continue;
+        }
+
+        poll.topic = strdup(linetok);
+
+        /* all fields parsed, add new poll
+         */
+
+        if (m2md_modbus_add_poll(&poll, ip, port) != 0)
+        {
+            el_print(ELW, "m2md_modbus_add_poll(%s:%d)", ip, port);
+            free(poll.topic);
+            continue;
+        }
+
+        /* move to the next line
+         */
+    }
 }
 
 
@@ -168,6 +599,7 @@ int main
         el_option(EL_TS_TM, m2md_cfg->log_ts_tm);
         el_option(EL_TS_FRACT, m2md_cfg->log_ts_tm_fract);
         el_option(EL_FINFO, m2md_cfg->log_finfo);
+        el_option(EL_FUNCINFO, m2md_cfg->log_funcinfo);
         el_option(EL_COLORS, m2md_cfg->log_colors);
         el_option(EL_PREFIX, m2md_cfg->log_prefix);
         el_option(EL_OUT, m2md_cfg->log_output);
@@ -222,6 +654,12 @@ int main
         goto m2md_modbus_init_error;
     }
 
+    if (m2md_parse_poll_file() != 0)
+    {
+        el_perror(ELF, "m2md_parse_poll_file()");
+        goto m2md_parse_poll_file_error;
+    }
+
     if (m2md_mqtt_init(m2md_cfg->mqtt_ip, m2md_cfg->mqtt_port) != 0)
     {
         el_perror(ELF, "m2md_mqtt_init()");
@@ -272,6 +710,7 @@ m2md_mqtt_loop_start_error:
     m2md_mqtt_cleanup();
 
 m2md_mqtt_init_error:
+m2md_parse_poll_file_error:
     m2md_modbus_cleanup();
 
 m2md_modbus_init_error:

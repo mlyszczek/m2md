@@ -14,9 +14,16 @@
 
 struct m2md_pl_data
 {
+    /* fields used to determin uniqueness of poll
+     */
+
     int     func;                /* modbus function to use on given reg */
     int     reg;                 /* register to poll */
     int     uid;                 /* unit id */
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    char            *topic;
+    float            scale;
     struct timespec  poll_time;  /* poll register every this time */
     struct timespec  next_read;  /* absolute time of next poll */
 };

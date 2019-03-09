@@ -42,8 +42,10 @@
 #define M2MD_ON_MESSAGE_CLBK(f) static void f(struct mosquitto *mqtt, \
         void *userdata, const struct mosquitto_message *msg)
 
+#if 0
 M2MD_ON_MESSAGE_CLBK(m2md_mqtt_poll_add);
 M2MD_ON_MESSAGE_CLBK(m2md_mqtt_poll_delete);
+#endif
 
 #ifndef M2MD_NO_SIGNALS
 extern volatile int g_m2md_run;
@@ -58,8 +60,10 @@ struct m2md_mqtt_sub
 }
 g_m2md_mqtt_subs[] =
 {
+#if 0
     { "/ctl/poll/add",     m2md_mqtt_poll_add,   },
     { "/ctl/poll/delete",  m2md_mqtt_poll_delete }
+#endif
 };
 
 /* check m2md_mqtt_create_ack_msg() for frame details
@@ -78,6 +82,12 @@ g_m2md_mqtt_subs[] =
 /_/
    ========================================================================== */
 
+/* TODO: dynamic polls need to be revisted, right now data is read
+ * statically from file cause it's easier and faster to implement
+ * but i t would be nice to have it done dynamically
+ */
+
+#if 0
 
 /* ==========================================================================
     Creates message used for /ack, make sure buf is big enough as it is not
@@ -179,45 +189,61 @@ static void m2md_mqtt_poll_add
 {
     char                 ip[INET_ADDRSTRLEN];  /* server ip address */
     uint16_t             port;                 /* port on which server listen */
-    uint16_t             mfr;                  /* manufacture of server */
     uint16_t             reg;                  /* register to poll */
+    float                scale;
     uint8_t              func;                 /* function to use to read reg */
     uint8_t              uid;                  /* unit id to read message from*/
     uint32_t             poll_s;               /* poll time, seconds part */
     uint16_t             poll_ms;              /* poll time, millisecond part */
+    char                *topic;
     struct m2md_pl_data  pdata;                /* poll data */
 
     /* message format, multibyte data is big-endian ordered
      *
-     * char[16]       server_ip (padded with zeroes, with null terminator)
-     * uint16_t       server_port
-     * uint16_t       server manufacture
-     * uint16_t       register to poll
-     * uint8_t        unit id
-     * uint8_t        function code to use to read register
-     * uint32_t       how often poll register? (seconds part)
-     * uint16_t       how often poll register? (milliseconds part)
+     * char[16]         server_ip (padded with zeroes, with null terminator)
+     * uint16_t         server_port
+     * uint16_t         register to poll
+     * ieee754(single)  scale factor of field
+     * uint8_t          unit id
+     * uint8_t          function code to use to read register
+     * uint32_t         how often poll register? (seconds part)
+     * uint16_t         how often poll register? (milliseconds part)
+     * char[]           topic on which publish polled register
      *
-     * so size is: 16+2+2+2+1+1+4+2 = 30bytes
+     * so size is: 16+2+2+4+2+1+1+4+2+3 = 37bytes
+     *
+     * the last 3 bytes are minimum length of topic string, that should
+     * start with '/', and contain at least 1 character and ending '\0'
      */
 
     #define IP_OFFSET           (0)
     #define PORT_OFFSET         (IP_OFFSET + sizeof(ip))
-    #define MFR_OFFSET          (PORT_OFFSET + sizeof(port))
-    #define REG_OFFSET          (MFR_OFFSET + sizeof(mfr))
-    #define UID_OFFSET          (REG_OFFSET + sizeof(reg))
+    #define REG_OFFSET          (PORT_OFFSET + sizeof(port))
+    #define SCALE_OFFSET        (REG_OFFSET + sizeof(reg))
+    #define UID_OFFSET          (SCALE_OFFSET + sizeof(scale))
     #define FUNC_OFFSET         (UID_OFFSET + sizeof(uid))
     #define POLL_SEC_OFFSET     (FUNC_OFFSET + sizeof(func))
     #define POLL_MSEC_OFFSET    (POLL_SEC_OFFSET + sizeof(poll_s))
+    #define TOPIC_OFFSET        (POLL_MSEC_OFFSET + sizeof(poll_ms))
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
     (void)userdata;
 
-    if (msg->payloadlen != 30)
+    if (msg->payloadlen < 37)
     {
-        /* message frame must be exactly 30 bytes long, no funny
+        /* message frame must be at least 37 bytes long, no funny
          * bussiness
+         */
+
+        goto incorect_data;
+        return;
+    }
+
+    if (((char*)msg->payload)[msg->payloadlen] != '\0')
+    {
+        /* last character must be '\0' as it terminates topic
+         * string
          */
 
         goto incorect_data;
@@ -230,21 +256,21 @@ static void m2md_mqtt_poll_add
     memcpy(ip, msg->payload + IP_OFFSET, sizeof(ip));
     ip[sizeof(ip) - 1] = '\0';
     memcpy(&port, msg->payload + PORT_OFFSET, sizeof(port));
-    memcpy(&mfr, msg->payload + MFR_OFFSET, sizeof(mfr));
     memcpy(&reg, msg->payload + REG_OFFSET, sizeof(reg));
     memcpy(&func, msg->payload + FUNC_OFFSET, sizeof(func));
     memcpy(&uid, msg->payload + UID_OFFSET, sizeof(uid));
     memcpy(&poll_s, msg->payload + POLL_SEC_OFFSET, sizeof(poll_s));
     memcpy(&poll_ms, msg->payload + POLL_MSEC_OFFSET, sizeof(poll_ms));
+    topic = strndup(msg->payload + TOPIC_OFFSET, M2MD_TOPIC_MAX);
 
     /* received data is big-endian, convert to our architecture
      */
 
     port = ntohs(port);
-    mfr = ntohs(mfr);
     reg = ntohs(reg);
     poll_s = ntohl(poll_s);
     poll_ms = ntohs(poll_ms);
+    scale = (float)ntohl((uint32_t)scale);
 
     /* prepare data to send to modbus module
      */
@@ -252,6 +278,8 @@ static void m2md_mqtt_poll_add
     pdata.func = func;
     pdata.reg = reg;
     pdata.uid = uid;
+    pdata.scale = scale;
+    pdata.topic = topic;
     pdata.poll_time.tv_sec = poll_s;
     pdata.poll_time.tv_nsec = poll_ms * 1000000l;
     pdata.next_read.tv_sec = 0;
@@ -261,7 +289,7 @@ static void m2md_mqtt_poll_add
      * modbus module.
      */
 
-    m2md_modbus_add_poll(&pdata, ip, port, mfr);
+    m2md_modbus_add_poll(&pdata, ip, port);
 
     return;
 
@@ -372,6 +400,7 @@ incorect_data:
     #undef FUNC_OFFSET
 }
 
+#endif
 
 /* ==========================================================================
     Called by mosquitto on connection response.
@@ -672,6 +701,8 @@ int m2md_mqtt_publish
 }
 
 
+#if 0
+
 /* ==========================================================================
     Publishes poll/add/ack message telling others that new poll has been
     added.
@@ -736,6 +767,7 @@ int m2md_mqtt_publish_delete_ack
     return m2md_mqtt_publish("/ctl/poll/delete/ack", buf, sizeof(buf));
 }
 
+#endif
 
 /* ==========================================================================
     Starts thread that will loop mosquitto object until stopped.

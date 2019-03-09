@@ -376,43 +376,19 @@ static void *m2md_modbus_server_thread
             /* message received, now transform it into mqtt
              */
 
-            regind = m2md_reg2topic_find(server->mfr, msg.data.poll.reg);
-            if (regind < 0)
-            {
-                el_print(ELE, "poll: m2md_reg2topic_find(%d, %d) "
-                        "someone is facing an update session!",
-                        server->mfr, msg.data.poll.reg);
-                continue;
-            }
-
-            /* construct topic on which send data
-             */
-
-            tl = snprintf(topic, sizeof(topic), "/%s:%d/%s",
-                    server->ip, server->port,
-                    m2md_reg2topic_map[server->mfr].elements[regind].topic);
-
-            if (tl > sizeof(topic))
-            {
-                el_print(ELE, "poll: error creating topic for reg %d, mfr %d "
-                        "managed to create only this %s",
-                        server->mfr, msg.data.poll.reg, topic);
-                continue;
-            }
-
             /* prepare data to send, received data is just imaginary value
              * without unit, we apply scale factor to convert value to
              * known unit.
              */
 
-            data = rval *
-                m2md_reg2topic_map[server->mfr].elements[regind].scale;
+            data = rval * msg.data.poll.scale;
 
             /* we are ready to publish message, so what are you
              * waiting for? hit em with it!
              */
 
-            if (m2md_mqtt_publish(topic, &data, sizeof(data)) != 0)
+            if (m2md_mqtt_publish(msg.data.poll.topic, &data, sizeof(data))
+                    != 0)
             {
                 el_perror(ELE, "poll: mqtt_publish(%s, %ld) failed",
                         topic, (long)sizeof(data));
@@ -486,8 +462,7 @@ int m2md_modbus_add_poll
 (
     struct m2md_pl_data      *poll,    /* register to poll */
     const char               *ip,      /* ip of server to poll */
-    int                       port,    /* modbus port on the server */
-    int                       mfr      /* manufacture of the server */
+    int                       port     /* modbus port on the server */
 )
 {
     struct m2md_server_msg    msg;     /* message to send to server thread */
@@ -540,15 +515,18 @@ int m2md_modbus_add_poll
          */
 
         pthread_kill(g_main_thread_t, SIGUSR1);
-        el_print(ELN, "poll/add finished: host: %s:%d, mfr: %d, "
+        el_print(ELN, "poll/add finished: host: %s:%d, topic: %s, scale: %f, "
                 "reg: %d, uid: %d, func: %d, poll_s: %ld, poll_ms: %d",
-                ip, port, mfr, poll->reg, poll->uid, poll->func,
-                poll->poll_time.tv_sec, poll->poll_time.tv_nsec / 1000000);
+                ip, port, poll->topic, poll->scale, poll->reg, poll->uid,
+                poll->func, poll->poll_time.tv_sec,
+                poll->poll_time.tv_nsec / 1000000);
 
+#if 0
         /* publish ack on mqtt bus, maybe someone is listening
          */
 
         m2md_mqtt_publish_add_ack(poll, ip, port);
+#endif
         return 0;
     }
 
@@ -569,7 +547,6 @@ int m2md_modbus_add_poll
     strcpy(server->ip, ip);
 
     server->conn_to = 1;
-    server->mfr = mfr;
     server->port = port;
     server->modbus = modbus_new_tcp(ip, port);
     if (server->modbus == NULL)
@@ -638,11 +615,14 @@ int m2md_modbus_add_poll
 
     pthread_mutex_unlock(&server->lock);
     pthread_kill(g_main_thread_t, SIGUSR1);
-    el_print(ELN, "poll/add finished: host: %s:%d, mfr: %d, "
+    el_print(ELN, "poll/add finished: host: %s:%d, topic: %s, scale: %f, "
             "reg: %d, uid: %d, func: %d, poll_s: %ld, poll_ms: %d",
-            ip, port, mfr, poll->reg, poll->uid, poll->func,
-            poll->poll_time.tv_sec, poll->poll_time.tv_nsec / 1000000);
+            ip, port, poll->topic, poll->scale, poll->reg, poll->uid,
+            poll->func, poll->poll_time.tv_sec,
+            poll->poll_time.tv_nsec / 1000000);
+#if 0
     m2md_mqtt_publish_add_ack(poll, ip, port);
+#endif
     return 0;
 
 pthread_create_error:
@@ -712,7 +692,9 @@ int m2md_modbus_delete_poll
     pthread_mutex_unlock(&servers[sid].lock);
     el_print(ELN, "poll/delete finished: host: %s:%d, func: %d, reg: %d, "
             "uid: %d", ip, port, poll->func, poll->reg, poll->uid);
+#if 0
     m2md_mqtt_publish_delete_ack(poll, ip, port);
+#endif
     return 0;
 }
 
@@ -809,9 +791,7 @@ struct timespec m2md_modbus_loop
              */
 
             msg.cmd = M2MD_SERVER_MSG_POLL;
-            msg.data.poll.func = poll->data.func;
-            msg.data.poll.reg = poll->data.reg;
-            msg.data.poll.uid = poll->data.uid;
+            msg.data.poll = poll->data;
 
             if (rb_send(server->msgq, &msg, 1, MSG_DONTWAIT) != 1)
             {
