@@ -6,6 +6,10 @@
 #ifndef M2MD_CFG_H
 #define M2MD_CFG_H 1
 
+#if HAVE_CONFIG_H
+#   include "m2md-config.h"
+#endif
+
 #include <limits.h>
 #include <stddef.h>
 
@@ -24,6 +28,7 @@ struct m2md_cfg
     int           log_ts_tm;
     int           log_ts_tm_fract;
     int           log_finfo;
+    int           log_funcinfo;
     int           log_colors;
     int           log_output;
     char          log_prefix[32 + 1];
@@ -41,6 +46,8 @@ struct m2md_cfg
      */
 
     int           modbus_max_re_time;
+    char          modbus_poll_list[PATH_MAX + 1];
+    char          modbus_map_list[PATH_MAX + 1];
 };
 
 extern const struct m2md_cfg  *m2md_cfg;

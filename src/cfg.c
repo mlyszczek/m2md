@@ -288,6 +288,7 @@ static void m2md_cfg_print_help
 "\t    --log-ts-tm=<tm>                  source of the clock to use for timestamping\n"
 "\t    --log-ts-tm-fract=<fract>         level of fraction of seconds detail to print\n"
 "\t    --log-finfo                       add filename to every print\n"
+"\t    --log-funcinfo                    add function name to every print\n"
 "\t    --log-colors                      add ascii colors to logs dependin on level printed\n"
 "\t-o, --log-output=<output>             outputs to enable for printing\n"
 "\t    --log-prefix=<prefix>             string to prefix each log print with\n"
@@ -297,6 +298,8 @@ static void m2md_cfg_print_help
 "\t-t, --mqtt-topic=<topic>              base topic name for all messages\n"
 "\t    --mqtt-id=<name>                  mqtt id to use when connecting to broker\n"
 "\t    --modbus-max-re-time=<seconds>    max time between reconnects in case connection to server fails\n"
+"\t    --modbus-poll-list=<path>         path to file with poll list\n"
+"\t    --modbus-map-list=<path>          path to file with mqtt->modbus map\n"
 #endif /* M2MD_ENABLE_GETOPT_LONG */
 );
 
@@ -413,6 +416,8 @@ static int m2md_cfg_parse_ini
             PARSE_MAP_INI(log, ts_tm_fract, "off:ms:us:ns")
         else if (strcmp(name, "finfo") == 0)
             PARSE_INT_INI(log, finfo, 0, 1)
+        else if (strcmp(name, "funcinfo") == 0)
+            PARSE_INT_INI(log, funcinfo, 0, 1)
         else if (strcmp(name, "colors") == 0)
             PARSE_INT_INI(log, colors, 0, 1)
         else if (strcmp(name, "output") == 0)
@@ -445,6 +450,10 @@ static int m2md_cfg_parse_ini
     {
         if (strcmp(name, "max_re_time") == 0)
             PARSE_INT_INI(modbus, max_re_time, 1, INT_MAX)
+        else if (strcmp(name, "poll_list") == 0)
+            PARSE_STR_INI(modbus, poll_list)
+        else if (strcmp(name, "map_list") == 0)
+            PARSE_STR_INI(modbus, map_list)
     }
 
     /* as far as inih is concerned, 1 is OK, while 0 would be error
@@ -491,15 +500,18 @@ static int m2md_cfg_parse_args
         {"log-ts-tm",          required_argument, NULL, 261},
         {"log-ts-tm-fract",    required_argument, NULL, 262},
         {"log-finfo",          no_argument,       NULL, 263},
-        {"log-colors",         no_argument,       NULL, 264},
+        {"log-funcinfo",       no_argument,       NULL, 264},
+        {"log-colors",         no_argument,       NULL, 265},
         {"log-output",         required_argument, NULL, 'o'},
-        {"log-prefix",         required_argument, NULL, 265},
-        {"log-path",           required_argument, NULL, 266},
+        {"log-prefix",         required_argument, NULL, 266},
+        {"log-path",           required_argument, NULL, 267},
         {"mqtt-ip",            required_argument, NULL, 'i'},
         {"mqtt-port",          required_argument, NULL, 'p'},
         {"mqtt-topic",         required_argument, NULL, 't'},
-        {"mqtt-id",            required_argument, NULL, 267},
-        {"modbus-max-re-time", required_argument, NULL, 268},
+        {"mqtt-id",            required_argument, NULL, 268},
+        {"modbus-max-re-time", required_argument, NULL, 269},
+        {"modbus-poll-list",   required_argument, NULL, 270},
+        {"modbus-map-list",    required_argument, NULL, 271},
         {NULL, 0, NULL, 0}
     };
 
@@ -528,11 +540,14 @@ static int m2md_cfg_parse_args
         case 261: PARSE_MAP(log_ts_tm, optarg, "clock:time:realtime:monotonic"); break;
         case 262: PARSE_MAP(log_ts_tm_fract, optarg, "off:ms:us:ns"); break;
         case 263: g_m2md_cfg.log_finfo = 1; break;
-        case 264: g_m2md_cfg.log_colors = 1; break;
-        case 265: PARSE_STR(log_prefix, optarg); break;
-        case 266: PARSE_STR(log_path, optarg); break;
-        case 267: PARSE_STR(mqtt_id, optarg); break;
-        case 268: PARSE_INT(modbus_max_re_time, optarg, 1, INT_MAX); break;
+        case 264: g_m2md_cfg.log_funcinfo = 1; break;
+        case 265: g_m2md_cfg.log_colors = 1; break;
+        case 266: PARSE_STR(log_prefix, optarg); break;
+        case 267: PARSE_STR(log_path, optarg); break;
+        case 268: PARSE_STR(mqtt_id, optarg); break;
+        case 269: PARSE_INT(modbus_max_re_time, optarg, 1, INT_MAX); break;
+        case 270: PARSE_STR(modbus_poll_list, optarg); break;
+        case 271: PARSE_STR(modbus_map_list, optarg); break;
 
         case ':':
             fprintf(stderr, "option -%c, --%s requires an argument\n",
@@ -676,8 +691,9 @@ int m2md_cfg_init
     PARSE_MAP(log_ts, "long", "off:short:long")
     PARSE_MAP(log_ts_tm, "realtime", "clock:time:realtime:monotonic")
     PARSE_MAP(log_ts_tm_fract, "ms", "off:ms:us:ns")
-    g_m2md_cfg.log_finfo = 1;
-    g_m2md_cfg.log_colors = 1;
+    g_m2md_cfg.log_finfo = 0;
+    g_m2md_cfg.log_funcinfo = 0;
+    g_m2md_cfg.log_colors = 0;
     g_m2md_cfg.log_output = 1;
     strcpy(g_m2md_cfg.log_prefix, "m2md: ");
     strcpy(g_m2md_cfg.log_path, "/var/log/m2md/m2md.log");
@@ -688,6 +704,8 @@ int m2md_cfg_init
     strcpy(g_m2md_cfg.mqtt_id, "m2md");
 
     g_m2md_cfg.modbus_max_re_time = 60;
+    strcpy(g_m2md_cfg.modbus_poll_list, "/etc/m2md/poll-list.conf");
+    strcpy(g_m2md_cfg.modbus_map_list, "/etc/m2md/map-list.conf");
 
     /* overwrite values with those define in compiletime
      */
@@ -728,6 +746,10 @@ int m2md_cfg_init
     g_m2md_cfg.log_finfo = M2MD_CFG_LOG_FINFO;
 #endif
 
+#ifdef M2MD_CFG_LOG_FUNCINFO
+    g_m2md_cfg.log_funcinfo = M2MD_CFG_LOG_FUNCINFO;
+#endif
+
 #ifdef M2MD_CFG_LOG_COLORS
     g_m2md_cfg.log_colors = M2MD_CFG_LOG_COLORS;
 #endif
@@ -762,6 +784,14 @@ int m2md_cfg_init
 
 #ifdef M2MD_CFG_MODBUS_MAX_RE_TIME
     g_m2md_cfg.modbus_max_re_time = M2MD_CFG_MODBUS_MAX_RE_TIME;
+#endif
+
+#ifdef M2MD_CFG_MODBUS_POLL_LIST
+    strcpy(g_m2md_cfg.modbus_poll_list, M2MD_CFG_MODBUS_POLL_LIST);
+#endif
+
+#ifdef M2MD_CFG_MODBUS_MAP_LIST
+    strcpy(g_m2md_cfg.modbus_map_list, M2MD_CFG_MODBUS_MAP_LIST);
 #endif
 
 
@@ -892,6 +922,7 @@ void m2md_cfg_dump
     CONFIG_PRINT_MAP(log_ts_tm);
     CONFIG_PRINT_MAP(log_ts_tm_fract);
     CONFIG_PRINT_FIELD(log_finfo, "%d");
+    CONFIG_PRINT_FIELD(log_funcinfo, "%d");
     CONFIG_PRINT_FIELD(log_colors, "%d");
     CONFIG_PRINT_FIELD(log_output, "%d");
     CONFIG_PRINT_FIELD(log_prefix, "%s");
@@ -901,6 +932,8 @@ void m2md_cfg_dump
     CONFIG_PRINT_FIELD(mqtt_topic, "%s");
     CONFIG_PRINT_FIELD(mqtt_id, "%s");
     CONFIG_PRINT_FIELD(modbus_max_re_time, "%d");
+    CONFIG_PRINT_FIELD(modbus_poll_list, "%s");
+    CONFIG_PRINT_FIELD(modbus_map_list, "%s");
 
 #undef CONFIG_PRINT_FIELD
 #undef CONFIG_PRINT_VAR
