@@ -488,6 +488,8 @@ int m2md_modbus_add_poll
          */
 
         server = servers + sid;
+        poll->next_read.tv_sec = 0;
+        poll->next_read.tv_nsec = 0;
         pthread_mutex_lock(&server->lock);
         if (m2md_pl_add(&server->polls, poll) != 0)
         {
@@ -597,6 +599,8 @@ int m2md_modbus_add_poll
      * poll to the list of polls for that server
      */
 
+    poll->next_read.tv_sec = 0;
+    poll->next_read.tv_nsec = 0;
     pthread_mutex_lock(&server->lock);
     if (m2md_pl_add(&server->polls, poll) != 0)
     {
