@@ -6,7 +6,7 @@ if HAVE_GCOV
 clean-local: clean-gcov
 endif
 
-EXTRA_DIST = tap-driver.sh readme.md
+EXTRA_DIST = tap-driver.sh
 
 analyze:
 	make analyze -C src

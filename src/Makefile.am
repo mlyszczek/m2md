@@ -1,7 +1,8 @@
 #include ../Makefile.am.coverage
 
 m2md_source = cfg.c main.c modbus.c mqtt.c poll-list.c reg2topic-map.c
-m2md_headers = cfg.h $(top_srcdir)/valid.h
+m2md_headers = cfg.h $(top_srcdir)/valid.h modbus.h poll-list.h mqtt.h \
+	reg2topic-map.h
 
 bin_cflags = $(COVERAGE_CFLAGS) -I$(top_srcdir) -I$(top_srcdir)/inc
 bin_ldflags = $(COVERAGE_LDFLAGS)
