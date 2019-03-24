@@ -27,7 +27,7 @@ AC_SEARCH_LIBS([el_init], [embedlog])
 AC_SEARCH_LIBS([modbus_new_tcp], [modbus])
 AC_SEARCH_LIBS([mosquitto_lib_init], [mosquitto])
 
-AC_DEFINE([M2MD_CONFIG_PATH_DEFAULT], ["/etc/m2md.conf"],
+AC_DEFINE([M2MD_CONFIG_PATH_DEFAULT], ["/etc/m2md/m2md.ini"],
     [default config file for program])
 
 
