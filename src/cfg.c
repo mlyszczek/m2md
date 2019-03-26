@@ -857,6 +857,8 @@ int m2md_cfg_init
             goto not_an_error_after_all;
         }
 
+        fprintf(stderr, "f/failed to parse config file %s: %s\n",
+                file, strerror(errno));
         return -1;
     }
 
