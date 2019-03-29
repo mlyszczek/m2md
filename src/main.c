@@ -15,13 +15,14 @@
 
 #include <embedlog.h>
 #include <errno.h>
-#include <stdio.h>
-#include <string.h>
-#include <stddef.h>
-#include <signal.h>
-#include <pthread.h>
-#include <stdlib.h>
 #include <mosquitto.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #include "modbus.h"
 #include "mqtt.h"
@@ -38,6 +39,7 @@
 
 volatile int g_m2md_run;
 pthread_t g_main_thread_t;
+
 
 /* ==========================================================================
                   _                __           ____
@@ -525,11 +527,13 @@ int m2md_main
 int main
 #endif
 (
-    int    argc,   /* number of arguments in argv */
-    char  *argv[]  /* array of passed arguments */
+    int     argc,        /* number of arguments in argv */
+    char   *argv[]       /* array of passed arguments */
 )
 {
-    int    ret;    /* return code from the program */
+    int     ret;         /* return code from the program */
+    time_t  prev_flush;  /* last time we flushed logs */
+    time_t  now;         /* current timestamp */
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     {
@@ -683,6 +687,7 @@ int main
 
     el_print(ELN, "all resources initialized, starting main loop");
 
+    prev_flush = 0;
     while (g_m2md_run)
     {
         struct timespec  req;
@@ -696,6 +701,21 @@ int main
         req = m2md_modbus_loop();
         el_print(ELD, "main: sleep for %ld.%ld", (long)req.tv_sec, req.tv_nsec);
         nanosleep(&req, NULL);
+
+        now = time(NULL);
+        if (now - prev_flush >= 60)
+        {
+            /* it's been more than 60 seconds from last flush,
+             * let's flush logs now
+             */
+
+            el_flush();
+
+            /* save time of last flush
+             */
+
+            prev_flush = now;
+        }
     }
 
     /* Code should get here only when it finished without problems,
