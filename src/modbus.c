@@ -250,22 +250,23 @@ static void *m2md_modbus_server_thread
          */
 
         case M2MD_SERVER_MSG_CONNECT:
-
             /* in case someone wants to reconnect while still being
              * connected
              */
 
             modbus_close(server->modbus);
 
+            el_print(ELN, "connecting to modbus %s:%d",
+                    server->ip, server->port);
+
             if (modbus_connect(server->modbus) == 0)
             {
-                /* connection was a success, open the
-                 * champagne!
+                /* connection was a success, open the champagne!
                  */
 
                 el_print(ELN, "connected to modbus server %s:%d",
                         server->ip, server->port);
-                continue;
+                break;
             }
 
             /* we failed to connect, client could be dead, sleep
@@ -357,19 +358,13 @@ static void *m2md_modbus_server_thread
                 /* sadly not, problems with sending and receiving
                  * data over modbustcp is usually due to connection
                  * problem.  It may not be, but meh, who care
-                 * really. To be sure we close connection and try
-                 * to reconnect to the server.
+                 * really. We don't reconnect here manually,
+                 * libmodbus shall do it for us since we have error
+                 * handling enabled.
                  */
 
-                el_print(ELE, "poll: modbus_* function %d %s",
+                el_print(ELE, "poll: modbus_* function %d %s ",
                         msg.data.poll.func, modbus_strerror(errno));
-                modbus_close(server->modbus);
-
-                if (m2md_modbus_server_reconnect(server->msgq) != 0)
-                {
-                    goto end_of_the_road;
-                }
-
                 continue;
             }
 
@@ -545,6 +540,7 @@ int m2md_modbus_add_poll
     /* initialize modbus context, we only have to do this once
      */
 
+    el_print(ELN, "initializing modbus client for %s:%d", ip, port);
     server = servers + sid;
     strcpy(server->ip, ip);
 
@@ -556,6 +552,9 @@ int m2md_modbus_add_poll
         el_perror(ELE, "poll/add: modbus_tcp_new(%s, %d)", ip, port);
         goto modbus_tcp_new_error;
     }
+
+    modbus_set_error_recovery(server->modbus,
+            MODBUS_ERROR_RECOVERY_LINK | MODBUS_ERROR_RECOVERY_PROTOCOL);
 
     /* Create queue on which server will receive commands from main
      * thread.
