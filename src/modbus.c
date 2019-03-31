@@ -721,6 +721,7 @@ struct timespec m2md_modbus_loop
     struct timespec           now;           /* current absolute time */
     struct m2md_pl           *poll;          /* current poll information */
     int                       i;             /* iterator */
+    static int                rb_send_fails; /* number of fails of rb_send() */
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
@@ -805,7 +806,50 @@ struct timespec m2md_modbus_loop
                  * situation and move on like nothing had happened
                  */
 
-                el_perror(ELW, "rb_send()");
+                if (errno != EAGAIN || ++rb_send_fails < 3)
+                {
+                    /* log error only if it is not EAGAIN or number
+                     * of consecutive fails is less than 3 - there
+                     * is no need to logs with same error over and
+                     * over again.
+                     */
+                    el_perror(ELW, "rb_send(), fail no: %d", rb_send_fails);
+                }
+            }
+            else
+            {
+                /* if rb_send() was successful, decrement
+                 * rb_send_fails
+                 */
+
+                --rb_send_fails;
+                if (rb_send_fails == -1)
+                {
+                    /* -1 means, we are very good and there were no
+                     * errors for long time, set rb_send_fails to 0,
+                     * so next successfull rb_send() will result in
+                     * rb_send_fails to become -1 once again.
+                     */
+
+                    rb_send_fails = 0;
+                }
+                else if (rb_send_fails == 0)
+                {
+                    /* previous rb_send_fails was 1, so it means
+                     * there were errors and now we recovered from
+                     * them, log good information
+                     */
+
+                    el_print(ELN, "rb_send() recovered");
+                }
+
+                /* rb_send_fails is bigger than 0, so there we
+                 * multiple rb_send() errors before, and now
+                 * rb_sed() seems to work again, but still, it
+                 * didn't make enough consecutive successfull calls
+                 * to consider it stable. Nothing to do in this
+                 * case, just wait for fix
+                 */
             }
 
             /* update poll's timer for next poll

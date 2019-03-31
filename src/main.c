@@ -699,7 +699,6 @@ int main
          */
 
         req = m2md_modbus_loop();
-        el_print(ELD, "main: sleep for %ld.%ld", (long)req.tv_sec, req.tv_nsec);
         nanosleep(&req, NULL);
 
         now = time(NULL);
