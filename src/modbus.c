@@ -382,6 +382,7 @@ static void *m2md_modbus_server_thread
              * waiting for? hit em with it!
              */
 
+            el_print(ELD, "poll publish: %s: %f", msg.data.poll.topic, data);
             if (m2md_mqtt_publish(msg.data.poll.topic, &data, sizeof(data))
                     != 0)
             {
