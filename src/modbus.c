@@ -217,6 +217,8 @@ static void *m2md_modbus_server_thread
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
+    el_print(ELN, "starting thread for server %s:%d",
+            server->ip, server->port);
     for (;;)
     {
         /* wait for command to arrive
@@ -363,8 +365,9 @@ static void *m2md_modbus_server_thread
                  * handling enabled.
                  */
 
-                el_print(ELE, "poll: modbus_* function %d %s ",
-                        msg.data.poll.func, modbus_strerror(errno));
+                el_print(ELE, "poll: modbus_read_%d(%d, %d): %s ",
+                        msg.data.poll.func, msg.data.poll.reg,
+                        msg.data.poll.uid, modbus_strerror(errno));
                 continue;
             }
 
@@ -498,7 +501,8 @@ int m2md_modbus_add_poll
              */
 
             pthread_mutex_unlock(&server->lock);
-            el_perror(ELE, "poll/add: m2md_pl_add()");
+            el_perror(ELE, "poll/add: m2md_pl_add(%s:%d, %s)",
+                    ip, port, poll->topic);
             return -1;
         }
 
@@ -534,7 +538,7 @@ int m2md_modbus_add_poll
 
     if ((sid = m2md_modbus_server_find_free()) < 0)
     {
-        el_print(ELW, "poll/add: no free server slots");
+        el_print(ELW, "poll/add: %s, no free server slots", poll->topic);
         return -1;
     }
 
