@@ -17,15 +17,17 @@ struct m2md_pl_data
     /* fields used to determin uniqueness of poll
      */
 
-    int     func;                /* modbus function to use on given reg */
-    int     reg;                 /* register to poll */
-    int     uid;                 /* unit id */
+    int     func;                  /* modbus function to use on given reg */
+    int     reg;                   /* register to poll */
+    int     uid;                   /* unit id */
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    char            *topic;
-    float            scale;
-    struct timespec  poll_time;  /* poll register every this time */
-    struct timespec  next_read;  /* absolute time of next poll */
+    char            *topic;        /* topic to publish register on */
+    float            scale;        /* scale factor for the field */
+    unsigned char    is_signed;    /* 1 - field is signed; 0 - unsigned */
+    unsigned char    field_width;  /* field withd in bytes */
+    struct timespec  poll_time;    /* poll register every this time */
+    struct timespec  next_read;    /* absolute time of next poll */
 };
 
 /* struct describing single node in the list

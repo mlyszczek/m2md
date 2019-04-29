@@ -330,6 +330,43 @@ static int m2md_parse_poll_file
 
 
         /* ==============================================================
+                              __
+                             / /_ __ __ ___  ___
+                            / __// // // _ \/ -_)
+                            \__/ \_, // .__/\__/
+                                /___//_/
+           ============================================================== */
+
+
+        NEXT_TOKEN("type");
+
+        if (linetok[0] != '+' && linetok[0] != '-')
+        {
+            el_print(ELW, "[%s:%d] first character of type must be + or -",
+                    file, lineno);
+            continue;
+        }
+
+        poll.is_signed = linetok[0] == '-' ? 1 : 0;
+
+        if (m2md_get_number(&linetok[1], &value) != 0)
+        {
+            el_print(ELW, "[%s:%d], invalid field width %s",
+                    file, lineno, &linetok[1]);
+            continue;
+        }
+
+        if (value < 0 || 2 < value)
+        {
+            el_print(ELW, "[%s:%d] field width out of range [0,2]",
+                    file, lineno);
+            continue;
+        }
+
+        poll.field_width = value;
+
+
+        /* ==============================================================
                                       _        __
                   _____ ___   ____ _ (_)_____ / /_ ___   _____
                  / ___// _ \ / __ `// // ___// __// _ \ / ___/

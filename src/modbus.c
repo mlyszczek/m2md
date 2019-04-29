@@ -312,11 +312,12 @@ static void *m2md_modbus_server_thread
 
         case M2MD_SERVER_MSG_POLL:
         {
-            uint16_t  rval;   /* read value from modbus */
-            float     data;   /* data to send over mqtt */
-            int       ret;    /* return code from functions */
-            int       tl;     /* topic length - from snprintf */
-            int       regind; /* register position in reg2topic map */
+            uint16_t  rval[2];    /* read value from modbus */
+            float     data;       /* data to send over mqtt */
+            int       ret;        /* return code from functions */
+            int       tl;         /* topic length - from snprintf */
+            int       i;          /* iterator */
+            int       regind;     /* register position in reg2topic map */
             char      topic[M2MD_TOPIC_MAX + 1];  /* topic to publish */
             /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
@@ -338,12 +339,14 @@ static void *m2md_modbus_server_thread
             {
             case M2MD_MODBUS_FUNC_READ_INPUT_REG:
                 ret = modbus_read_input_registers(server->modbus,
-                        msg.data.poll.reg, 1, &rval) != 1;
+                        msg.data.poll.reg, msg.data.poll.field_width,
+                        rval) != msg.data.poll.field_width;
                 break;
 
             case M2MD_MODBUS_FUNC_READ_MULTI_HOLD_REG:
                 ret = modbus_read_registers(server->modbus,
-                        msg.data.poll.reg, 1, &rval) != 1;
+                        msg.data.poll.reg, msg.data.poll.field_width,
+                        rval) != msg.data.poll.field_width;
                 break;
 
             default:
@@ -379,7 +382,41 @@ static void *m2md_modbus_server_thread
              * known unit.
              */
 
-            data = rval * msg.data.poll.scale;
+            if (msg.data.poll.field_width == 1)
+            {
+                /* data is signed, we need to treat data in rval as
+                 * signed so compiler can generate proper assembly
+                 * instruction for signed multiplication
+                 */
+
+                if (msg.data.poll.is_signed)
+                {
+                    data = (int16_t)rval[0];
+                }
+                else
+                {
+                    data = rval[0];
+                }
+            }
+            else
+            {
+                uint32_t  val;
+                /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+
+                val = rval[0] | ((uint32_t)rval[1] << 16);
+
+                if (msg.data.poll.is_signed)
+                {
+                    data = (int32_t)val;
+                }
+                else
+                {
+                    data = val;
+                }
+            }
+
+            data *= msg.data.poll.scale;
 
             /* we are ready to publish message, so what are you
              * waiting for? hit em with it!
@@ -518,9 +555,11 @@ int m2md_modbus_add_poll
 
         pthread_kill(g_main_thread_t, SIGUSR1);
         el_print(ELN, "poll/add finished: host: %s:%d, topic: %s, scale: %f, "
-                "reg: %d, uid: %d, func: %d, poll_s: %ld, poll_ms: %d",
-                ip, port, poll->topic, poll->scale, poll->reg, poll->uid,
-                poll->func, poll->poll_time.tv_sec,
+                "type: %c%d, reg: %d, uid: %d, func: %d, "
+                "poll_s: %ld, poll_ms: %d",
+                ip, port, poll->topic, poll->scale,
+                poll->is_signed ? '-' : '+', poll->field_width,
+                poll->reg, poll->uid, poll->func, poll->poll_time.tv_sec,
                 poll->poll_time.tv_nsec / 1000000);
 
 #if 0
@@ -624,10 +663,13 @@ int m2md_modbus_add_poll
     pthread_mutex_unlock(&server->lock);
     pthread_kill(g_main_thread_t, SIGUSR1);
     el_print(ELN, "poll/add finished: host: %s:%d, topic: %s, scale: %f, "
-            "reg: %d, uid: %d, func: %d, poll_s: %ld, poll_ms: %d",
-            ip, port, poll->topic, poll->scale, poll->reg, poll->uid,
-            poll->func, poll->poll_time.tv_sec,
+            "type: %c%d, reg: %d, uid: %d, func: %d, "
+            "poll_s: %ld, poll_ms: %d",
+            ip, port, poll->topic, poll->scale,
+            poll->is_signed ? '-' : '+', poll->field_width,
+            poll->reg, poll->uid, poll->func, poll->poll_time.tv_sec,
             poll->poll_time.tv_nsec / 1000000);
+
 #if 0
     m2md_mqtt_publish_add_ack(poll, ip, port);
 #endif
