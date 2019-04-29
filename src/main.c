@@ -319,7 +319,7 @@ static int m2md_parse_poll_file
             continue;
         }
 
-        if (value < 0 || 255< value)
+        if (value < 0 || 255 < value)
         {
             el_print(ELW, "[%s:%d] slave id is out of range [0,255]",
                     file, lineno);
@@ -531,6 +531,16 @@ static int m2md_parse_poll_file
         }
 
         poll.topic = strdup(linetok);
+
+
+    /* ==================================================================
+                               __    __             __ __
+                     ___ _ ___/ /___/ / ___  ___   / // /
+                    / _ `// _  // _  / / _ \/ _ \ / // /
+                    \_,_/ \_,_/ \_,_/ / .__/\___//_//_/
+                                     /_/
+       ================================================================== */
+
 
         /* all fields parsed, add new poll
          */
