@@ -553,7 +553,7 @@ int m2md_modbus_add_poll
          * poll once a second. Not an ideal situation, is it?
          */
 
-        pthread_kill(g_main_thread_t, SIGUSR1);
+        pthread_kill(g_main_thread_t, SIGUSR2);
         el_print(ELN, "poll/add finished: host: %s:%d, topic: %s, scale: %f, "
                 "type: %c%d, reg: %d, uid: %d, func: %d, "
                 "poll_s: %ld, poll_ms: %d",
@@ -661,7 +661,7 @@ int m2md_modbus_add_poll
     }
 
     pthread_mutex_unlock(&server->lock);
-    pthread_kill(g_main_thread_t, SIGUSR1);
+    pthread_kill(g_main_thread_t, SIGUSR2);
     el_print(ELN, "poll/add finished: host: %s:%d, topic: %s, scale: %f, "
             "type: %c%d, reg: %d, uid: %d, func: %d, "
             "poll_s: %ld, poll_ms: %d",

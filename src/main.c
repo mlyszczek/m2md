@@ -38,6 +38,7 @@
 
 
 volatile int g_m2md_run;
+volatile int g_flush_now;
 pthread_t g_main_thread_t;
 
 
@@ -68,7 +69,10 @@ static void sigint_handler
 
 
 /* ==========================================================================
-    Useless signal handler for SIGUSR1 that does nothing but still is needed
+    Handler for handling SIGUSR1 and SIGUSR2. On SIGUSR1 we flush logs to
+    disk, SIGUSR2 does nothing, but is needed because internal logic sends
+    this signal to force program to update its state. Check modbus.c file
+    for details and look for SIGUSR2 usage.
    ========================================================================== */
 
 
@@ -78,6 +82,11 @@ static void sigusr_handler
 )
 {
     (void)signo;
+
+    if (signo == SIGUSR1)
+    {
+        g_flush_now = 1;
+    }
 }
 
 
@@ -204,6 +213,7 @@ static int m2md_parse_poll_file
             }
 
             el_perror(ELC, "fgets(%s)", file);
+            fclose(f);
             return -1;
         }
 
@@ -555,6 +565,8 @@ static int m2md_parse_poll_file
         /* move to the next line
          */
     }
+
+    fclose(f);
 }
 
 
@@ -599,6 +611,7 @@ int main
 
         sa.sa_handler = sigusr_handler;
         sigaction(SIGUSR1, &sa, NULL);
+        sigaction(SIGUSR2, &sa, NULL);
     }
 
     /* first things first, initialize configuration of the program
@@ -749,10 +762,15 @@ int main
         nanosleep(&req, NULL);
 
         now = time(NULL);
-        if (now - prev_flush >= 60)
+        if (now - prev_flush >= 60 || g_flush_now)
         {
+            if (g_flush_now)
+            {
+                el_print(ELN, "flushing due to flush_now flag");
+            }
+
             /* it's been more than 60 seconds from last flush,
-             * let's flush logs now
+             * or flush_now flag is set, let's flush logs now
              */
 
             el_flush();
@@ -761,6 +779,7 @@ int main
              */
 
             prev_flush = now;
+            g_flush_now = 0;
         }
     }
 
