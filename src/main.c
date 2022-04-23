@@ -26,14 +26,14 @@
 
 #include "modbus.h"
 #include "mqtt.h"
+#include "macros.h"
+
 
 /* ==========================================================================
-          __             __                     __   _
      ____/ /___   _____ / /____ _ _____ ____ _ / /_ (_)____   ____   _____
     / __  // _ \ / ___// // __ `// ___// __ `// __// // __ \ / __ \ / ___/
    / /_/ //  __// /__ / // /_/ // /   / /_/ // /_ / // /_/ // / / /(__  )
    \__,_/ \___/ \___//_/ \__,_//_/    \__,_/ \__//_/ \____//_/ /_//____/
-
    ========================================================================== */
 
 
@@ -49,22 +49,17 @@ pthread_t g_main_thread_t;
   / /_/ // /   / / | |/ // /_/ // /_ /  __/  / __// /_/ // / / // /__ (__  )
  / .___//_/   /_/  |___/ \__,_/ \__/ \___/  /_/   \__,_//_/ /_/ \___//____/
 /_/
-   ========================================================================== */
-
-
-/* ==========================================================================
+   ==========================================================================
     Signal handler for SIGINT and SIGTERM.
    ========================================================================== */
-
-
 static void sigint_handler
 (
-    int signo  /* signal that triggered this handler */
+	int signo  /* signal that triggered this handler */
 )
 {
-    (void)signo;
+	(void)signo;
 
-    g_m2md_run = 0;
+	g_m2md_run = 0;
 }
 
 
@@ -74,509 +69,345 @@ static void sigint_handler
     this signal to force program to update its state. Check modbus.c file
     for details and look for SIGUSR2 usage.
    ========================================================================== */
-
-
 static void sigusr_handler
 (
-    int signo  /* signal that triggered this handler */
+	int signo  /* signal that triggered this handler */
 )
 {
-    (void)signo;
+	(void)signo;
 
-    if (signo == SIGUSR1)
-    {
-        g_flush_now = 1;
-    }
+	if (signo == SIGUSR1)
+		g_flush_now = 1;
 }
 
 
 static int m2md_get_number
 (
-    const char  *num,  /* string to convert to number */
-    long        *n     /* converted num will be placed here */
+	const char  *num,  /* string to convert to number */
+	long        *n     /* converted num will be placed here */
 )
 {
-    const char  *ep;   /* endptr for strtol function */
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	const char  *ep;   /* endptr for strtol function */
+	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
-    if (*num == '\0')
-    {
-        errno = EINVAL;
-        return -1;
-    }
+	if (*num == '\0')
+		return_errno(EINVAL);
 
-    *n = strtol(num, (char **)&ep, 10);
+	*n = strtol(num, (char **)&ep, 10);
+	if (*ep != '\0')
+		return_errno(EINVAL);
+	if (*n == LONG_MAX || *n == LONG_MIN)
+		return_errno(ERANGE);
 
-    if (*ep != '\0')
-    {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (*n == LONG_MAX || *n == LONG_MIN)
-    {
-        errno = ERANGE;
-        return -1;
-    }
-
-    return 0;
+	return 0;
 }
 
 static int m2md_get_float
 (
-    const char  *num,  /* string to convert to float */
-    float       *n     /* converted num will be placed here */
+	const char  *num,  /* string to convert to float */
+	float       *n     /* converted num will be placed here */
 )
 {
-    const char  *ep;   /* endptr for strtol function */
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	const char  *ep;   /* endptr for strtol function */
+	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
-    if (*num == '\0')
-    {
-        errno = EINVAL;
-        return -1;
-    }
+	if (*num == '\0')
+		return_errno(EINVAL);
 
-    *n = strtof(num, (char **)&ep);
+	*n = strtof(num, (char **)&ep);
+	if (*ep != '\0')
+		return_errno(EINVAL);
+	if (*n == LONG_MAX || *n == LONG_MIN)
+		return_errno(ERANGE);
 
-    if (*ep != '\0')
-    {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (*n == LONG_MAX || *n == LONG_MIN)
-    {
-        errno = ERANGE;
-        return -1;
-    }
-
-    return 0;
+	return 0;
 }
 
 
 static int m2md_parse_poll_file
 (
-    void
+	void
 )
 {
-    const char          *file;
-    FILE                *f;
-    char                 line[4096];
-    struct m2md_pl_data  poll;
-    char                 ip[INET_ADDRSTRLEN];
-    int                  port;
-    char                *linetok;
-    int                  lineno;
-    long                 value;
-    float                floatval;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	const char          *file;
+	FILE                *f;
+	char                 line[4096];
+	struct m2md_pl_data  poll;
+	char                 ip[INET_ADDRSTRLEN];
+	int                  port;
+	char                *linetok;
+	int                  lineno;
+	long                 value;
+	float                floatval;
+	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 #define NEXT_TOKEN(name) \
-    if ((linetok = strtok(NULL, ",")) == NULL) \
-    { \
-        el_print(ELW, "[%s:%d] missing field: %s", file, lineno, name); \
-        continue; \
-    }
-
-
-
-    file = m2md_cfg->modbus_poll_list;
-    if ((f = fopen(file, "r")) == NULL)
-    {
-        el_perror(ELC, "fopen(%s)", file);
-        return -1;
-    }
-
-    for (lineno = 1;;++lineno)
-    {
-        /* set last byte of line buffer to something other than
-         * '\0' to know whether fgets have overwritten it or not
-         */
-
-        line[sizeof(line) - 1] = 0xaa;
-
-        /* try to read whole line into buffer
-         */
-
-        if (fgets(line, sizeof(line), f) == NULL)
-        {
-            if (feof(f))
-            {
-                /* end of file reached, and fgets didn't write
-                 * anything into line - we parsed whole file
-                 */
-
-                return 0;
-            }
-
-            el_perror(ELC, "fgets(%s)", file);
-            fclose(f);
-            return -1;
-        }
-
-        if (line[sizeof(line) - 1] == '\0' && line[sizeof(line) - 2] != '\n')
-        {
-            /* fgets overwritted last byte with '\0', which means
-             * it filled whole line buffer with data
-             *
-             * AND
-             *
-             * last character in string is not a new line
-             * character, so our line buffer turns out to be too
-             * small and we couln't read whole line into buffer.
-             */
-
-            el_print(ELC, "[%s:%d], line is longer than %ld, ignoring line",
-                    file, lineno, (long)(sizeof(line) - 2));
-            continue;
-        }
-
-        if (line[0] == '\n' || line[0] == '#')
-        {
-            /* line is empty (only new line character is present)
-             *
-             * or
-             *
-             * line is a comment (starting from #)
-             */
-
-            continue;
-        }
-
-        /* remove last newline character from line
-         */
-
-        line[strlen(line) - 1] = '\0';
-
-        /* now that we have full line, we can parse fields in it
-         */
-
-
-        /* ==============================================================
-             _                      __     __
-            (_)____     ____ _ ____/ /____/ /_____ ___   _____ _____
-           / // __ \   / __ `// __  // __  // ___// _ \ / ___// ___/
-          / // /_/ /  / /_/ // /_/ // /_/ // /   /  __/(__  )(__  )
-         /_// .___/   \__,_/ \__,_/ \__,_//_/    \___//____//____/
-           /_/
-           ============================================================== */
-
-
-        if ((linetok = strtok(line, ",")) == NULL)
-        {
-            el_print(ELW, "[%s:%d] no fields found", file, lineno);
-            continue;
-        }
-
-
-        if (strlen(linetok) > sizeof(ip))
-        {
-            el_print(ELW, "%s:%d, invalid ip address: %s",
-                    file, lineno, linetok);
-            continue;
-        }
+	if ((linetok = strtok(NULL, ",")) == NULL) \
+		continue_print(ELW, "[%s:%d] missing field: %s", file, lineno, name);
+
+
+	file = m2md_cfg->modbus_poll_list;
+	if ((f = fopen(file, "r")) == NULL)
+		return_perror(ELC, "fopen(%s)", file);
+
+	for (lineno = 1;;++lineno)
+	{
+		/* set last byte of line buffer to something other than
+		 * '\0' to know whether fgets have overwritten it or not */
+		line[sizeof(line) - 1] = 0xaa;
+
+		/* try to read whole line into buffer */
+		if (fgets(line, sizeof(line), f) == NULL)
+		{
+			if (feof(f))
+				/* end of file reached, and fgets didn't write
+				 * anything into line - we parsed whole file */
+				return 0;
+
+			el_perror(ELC, "fgets(%s)", file);
+			fclose(f);
+			return -1;
+		}
+
+		/* fgets overwritted last byte with '\0', which means
+		 * it filled whole line buffer with data
+		 *   -- and --
+		 * last character in string is not a new line
+		 * character, so our line buffer turns out to be too
+		 * small and we couln't read whole line into buffer.  */
+		if (line[sizeof(line) - 1] == '\0' && line[sizeof(line) - 2] != '\n')
+			continue_print(ELC,
+					"[%s:%d], line is longer than %ld, ignoring line",
+					file, lineno, (long)(sizeof(line) - 2));
+
+		/* line is empty (only new line character is present)
+		 *   -- or --
+		 * line is a comment (starting from #) */
+		if (line[0] == '\n' || line[0] == '#')
+			continue;
+
+		/* remove last newline character from line */
+		line[strlen(line) - 1] = '\0';
 
-        strcpy(ip, linetok);
+		/* now that we have full line, we can parse fields in it */
 
+
+	/* ==================================================================
+	             (_)___    ___ _ ___/ /___/ /____ ___  ___  ___
+	            / // _ \  / _ `// _  // _  // __// -_)(_-< (_-<
+	           /_// .__/  \_,_/ \_,_/ \_,_//_/   \__//___//___/
+	             /_/
+	   ================================================================== */
+		if ((linetok = strtok(line, ",")) == NULL)
+			continue_print(ELW, "[%s:%d] no fields found", file, lineno);
+
+		if (strlen(linetok) > sizeof(ip))
+			continue_print(ELW, "%s:%d, invalid ip address: %s",
+					file, lineno, linetok);
+
+		strcpy(ip, linetok);
 
-        /* ==============================================================
-                                                  __
-                             ____   ____   _____ / /_
-                            / __ \ / __ \ / ___// __/
-                           / /_/ // /_/ // /   / /_
-                          / .___/ \____//_/    \__/
-                         /_/
-           ============================================================== */
 
+	/* ==================================================================
+	                          ___  ___   ____ / /_
+	                         / _ \/ _ \ / __// __/
+	                        / .__/\___//_/   \__/
+	                       /_/
+	   ================================================================== */
+		NEXT_TOKEN("port");
 
-        NEXT_TOKEN("port");
+		if (m2md_get_number(linetok, &value) != 0)
+			continue_print(ELW, "[%s:%d] invalid port %s", file, lineno, linetok);
 
-        if (m2md_get_number(linetok, &value) != 0)
-        {
-            el_print(ELW, "[%s:%d] invalid port %s", file, lineno, linetok);
-            continue;
-        }
+		if (value < 1 || 65535 < value)
+			continue_print(ELW, "[%s:%d] port is out of range [1,65535]",
+					file, lineno);
 
-        if (value < 1 || 65535 < value)
-        {
-            el_print(ELW, "[%s:%d] port is out of range [1,65535]",
-                    file, lineno);
-            continue;
-        }
+		port = value;
 
-        port = value;
 
+	/* ==================================================================
+	                  ___  / /___ _ _  __ ___   (_)___/ /
+	                 (_-< / // _ `/| |/ // -_) / // _  /
+	                /___//_/ \_,_/ |___/ \__/ /_/ \_,_/
+	   ================================================================== */
+		NEXT_TOKEN("slave id");
 
-        /* ==============================================================
-                           __                       _      __
-                    _____ / /____ _ _   __ ___     (_)____/ /
-                   / ___// // __ `/| | / // _ \   / // __  /
-                  (__  )/ // /_/ / | |/ //  __/  / // /_/ /
-                 /____//_/ \__,_/  |___/ \___/  /_/ \__,_/
+		if (m2md_get_number(linetok, &value) != 0)
+			continue_print(ELW, "[%s:%d], invalid slave id: %s",
+					file, lineno, linetok);
 
-           ============================================================== */
+		if (value < 0 || 255 < value)
+			continue_print(ELW, "[%s:%d] slave id is out of range [0,255]",
+					file, lineno);
 
+		poll.uid = value;
 
-        NEXT_TOKEN("slave id");
 
-        if (m2md_get_number(linetok, &value) != 0)
-        {
-            el_print(ELW, "[%s:%d], invalid slave id: %s",
-                    file, lineno, linetok);
-            continue;
-        }
+	/* ==================================================================
+	                         / /_ __ __ ___  ___
+	                        / __// // // _ \/ -_)
+	                        \__/ \_, // .__/\__/
+	                            /___//_/
+	   ================================================================== */
+		NEXT_TOKEN("type");
 
-        if (value < 0 || 255 < value)
-        {
-            el_print(ELW, "[%s:%d] slave id is out of range [0,255]",
-                    file, lineno);
-            continue;
-        }
+		if (linetok[0] != '+' && linetok[0] != '-')
+			continue_print(ELW, "[%s:%d] first character of type must be + or -",
+					file, lineno);
 
-        poll.uid = value;
+		poll.is_signed = linetok[0] == '-' ? 1 : 0;
 
+		if (m2md_get_number(&linetok[1], &value) != 0)
+			continue_print(ELW, "[%s:%d], invalid field width %s",
+					file, lineno, &linetok[1]);
 
-        /* ==============================================================
-                              __
-                             / /_ __ __ ___  ___
-                            / __// // // _ \/ -_)
-                            \__/ \_, // .__/\__/
-                                /___//_/
-           ============================================================== */
+		if (value < 0 || 2 < value)
+			continue_print(ELW, "[%s:%d] field width out of range [0,2]",
+					file, lineno);
 
+		poll.field_width = value;
 
-        NEXT_TOKEN("type");
 
-        if (linetok[0] != '+' && linetok[0] != '-')
-        {
-            el_print(ELW, "[%s:%d] first character of type must be + or -",
-                    file, lineno);
-            continue;
-        }
+	/* ==================================================================
+	                 ____ ___  ___ _ (_)___ / /_ ___  ____
+	                / __// -_)/ _ `// /(_-</ __// -_)/ __/
+	               /_/   \__/ \_, //_//___/\__/ \__//_/
+	                         /___/
+	   ================================================================== */
+		NEXT_TOKEN("register");
 
-        poll.is_signed = linetok[0] == '-' ? 1 : 0;
+		if (m2md_get_number(linetok, &value) != 0)
+			continue_print(ELW, "[%s:%d], invalid register number %s",
+					file, lineno, linetok);
 
-        if (m2md_get_number(&linetok[1], &value) != 0)
-        {
-            el_print(ELW, "[%s:%d], invalid field width %s",
-                    file, lineno, &linetok[1]);
-            continue;
-        }
+		if (value < 0 || 65535 < value)
+			continue_print(ELW, "[%s:%d] register number is out of range [0,65535]",
+					file, lineno);
 
-        if (value < 0 || 2 < value)
-        {
-            el_print(ELW, "[%s:%d] field width out of range [0,2]",
-                    file, lineno);
-            continue;
-        }
+		poll.reg = value;
 
-        poll.field_width = value;
 
+	/* ==================================================================
+	       __ _  ___  ___/ // /  __ __ ___   / _/__ __ ___  ____ / /_
+	      /  ' \/ _ \/ _  // _ \/ // /(_-<  / _// // // _ \/ __// __/
+	     /_/_/_/\___/\_,_//_.__/\_,_//___/ /_/  \_,_//_//_/\__/ \__/
+	   ================================================================== */
+		NEXT_TOKEN("modbus functions");
 
-        /* ==============================================================
-                                      _        __
-                  _____ ___   ____ _ (_)_____ / /_ ___   _____
-                 / ___// _ \ / __ `// // ___// __// _ \ / ___/
-                / /   /  __// /_/ // /(__  )/ /_ /  __// /
-               /_/    \___/ \__, //_//____/ \__/ \___//_/
-                           /____/
-           ============================================================== */
+		if (m2md_get_number(linetok, &value) != 0)
+			continue_print(ELW, "[%s:%d], invalid modbus function: %s",
+					file, lineno, linetok);
 
+		if (value < 0 || 255 < value)
+			continue_print(ELW, "[%s:%d] modbus function is out of range [0,255]",
+					file, lineno);
 
-        NEXT_TOKEN("register");
+		poll.func = value;
 
-        if (m2md_get_number(linetok, &value) != 0)
-        {
-            el_print(ELW, "[%s:%d], invalid register number %s",
-                    file, lineno, linetok);
-            continue;
-        }
 
-        if (value < 0 || 65535 < value)
-        {
-            el_print(ELW, "[%s:%d] register number is out of range [0,65535]",
-                    file, lineno);
-            continue;
-        }
+	/* ==================================================================
+	                         __       ___            __
+	         ___ ____ ___ _ / /___   / _/___ _ ____ / /_ ___   ____
+	        (_-</ __// _ `// // -_) / _// _ `// __// __// _ \ / __/
+	       /___/\__/ \_,_//_/ \__/ /_/  \_,_/ \__/ \__/ \___//_/
 
-        poll.reg = value;
+	   ================================================================== */
+		NEXT_TOKEN("scale factor");
 
+		if (m2md_get_float(linetok, &floatval) != 0)
+			continue_print(ELW, "[%s:%d] invalid scale factor: %s",
+					file, lineno, linetok);
 
-        /* ==============================================================
-                   ____                     __   _
-                  / __/__  __ ____   _____ / /_ (_)____   ____
-                 / /_ / / / // __ \ / ___// __// // __ \ / __ \
-                / __// /_/ // / / // /__ / /_ / // /_/ // / / /
-               /_/   \__,_//_/ /_/ \___/ \__//_/ \____//_/ /_/
+		poll.scale = floatval;
 
-           ============================================================== */
 
+	/* ==================================================================
+	          ___  ___   / // / ___ ___  ____ ___   ___  ___/ /___
+	         / _ \/ _ \ / // / (_-</ -_)/ __// _ \ / _ \/ _  /(_-<
+	        / .__/\___//_//_/ /___/\__/ \__/ \___//_//_/\_,_//___/
+	       /_/
+	   ================================================================== */
+		NEXT_TOKEN("poll seconds");
 
-        NEXT_TOKEN("modbus functions");
+		if (m2md_get_number(linetok, &value) != 0)
+			continue_print(ELW, "[%s:%d], invalid poll seconds: %s",
+					file, lineno, linetok);
 
-        if (m2md_get_number(linetok, &value) != 0)
-        {
-            el_print(ELW, "[%s:%d], invalid modbus function: %s",
-                    file, lineno, linetok);
-            continue;
-        }
+		if (value < 0)
+			continue_print(ELW, "[%s:%d] poll seconds is out of range [0,inf)",
+					file, lineno);
 
-        if (value < 0 || 255 < value)
-        {
-            el_print(ELW, "[%s:%d] modbus function is out of range [0,255]",
-                    file, lineno);
-            continue;
-        }
+		poll.poll_time.tv_sec = value;
 
-        poll.func = value;
 
+	/* ==================================================================
+	           ___  ___   / // / __ _   (_)/ // /(_)___ ___  ____
+	          / _ \/ _ \ / // / /  ' \ / // // // /(_-</ -_)/ __/
+	         / .__/\___//_//_/ /_/_/_//_//_//_//_//___/\__/ \__/
+	        /_/
+	   ================================================================== */
+		NEXT_TOKEN("poll milliseconds");
 
-    /* ==================================================================
-                                               __
-                           _____ _____ ____ _ / /___
-                          / ___// ___// __ `// // _ \
-                         (__  )/ /__ / /_/ // //  __/
-                        /____/ \___/ \__,_//_/ \___/
+		if (m2md_get_number(linetok, &value) != 0)
+			continue_print(ELW, "[%s:%d], invalid poll milliseconds: %s",
+					file, lineno, linetok);
 
-       ================================================================== */
+		if (value < 0 || 999 < value)
+			continue_print(ELW, "[%s:%d] poll milliseconds is out of range "
+					"[0,999]", file, lineno);
 
+		poll.poll_time.tv_nsec = value * 1000000l;
 
-        NEXT_TOKEN("scale factor");
 
-        if (m2md_get_float(linetok, &floatval) != 0)
-        {
-            el_print(ELW, "[%s:%d] invalid scale factor: %s",
-                    file, lineno, linetok);
-            continue;
-        }
+	/* ==================================================================
+	                       / /_ ___   ___   (_)____
+	                      / __// _ \ / _ \ / // __/
+	                      \__/ \___// .__//_/ \__/
+	                               /_/
+	   ================================================================== */
+		NEXT_TOKEN("topic");
 
-        poll.scale = floatval;
+		if (strlen(linetok) > M2MD_TOPIC_MAX)
+			continue_print(ELW, "[%s:%d] topic is too long, max is %d",
+					file, lineno, M2MD_TOPIC_MAX);
 
+		if (mosquitto_sub_topic_check(linetok) != 0)
+			continue_print(ELW, "[%s:%d] topic %s is not valid mqtt topic",
+					file, lineno, linetok);
 
-        /* ==============================================================
-                                    __ __
-                     ____   ____   / // /  _____ ___   _____
-                    / __ \ / __ \ / // /  / ___// _ \ / ___/
-                   / /_/ // /_/ // // /  (__  )/  __// /__
-                  / .___/ \____//_//_/  /____/ \___/ \___/
-                 /_/
-           ============================================================== */
+		poll.topic = strdup(linetok);
 
 
-        NEXT_TOKEN("poll seconds");
+	/* ==================================================================
+	                 ___ _ ___/ /___/ / ___  ___   / // /
+	                / _ `// _  // _  / / _ \/ _ \ / // /
+	                \_,_/ \_,_/ \_,_/ / .__/\___//_//_/
+	                                 /_/
+	   ================================================================== */
 
-        if (m2md_get_number(linetok, &value) != 0)
-        {
-            el_print(ELW, "[%s:%d], invalid poll seconds: %s",
-                    file, lineno, linetok);
-            continue;
-        }
+		/* all fields parsed, add new poll */
+		if (m2md_modbus_add_poll(&poll, ip, port) != 0)
+		{
+			el_print(ELW, "m2md_modbus_add_poll(%s:%d)", ip, port);
+			free(poll.topic);
+			continue;
+		}
 
-        if (value < 0)
-        {
-            el_print(ELW, "[%s:%d] poll seconds is out of range [0,inf)",
-                    file, lineno);
-            continue;
-        }
+		/* move to the next line */
+	}
 
-        poll.poll_time.tv_sec = value;
-
-
-        /* ==============================================================
-                         __ __              _  __ __ _
-          ____   ____   / // /  ____ ___   (_)/ // /(_)_____ ___   _____
-         / __ \ / __ \ / // /  / __ `__ \ / // // // // ___// _ \ / ___/
-        / /_/ // /_/ // // /  / / / / / // // // // /(__  )/  __// /__
-       / .___/ \____//_//_/  /_/ /_/ /_//_//_//_//_//____/ \___/ \___/
-      /_/
-           ============================================================== */
-
-
-        NEXT_TOKEN("poll milliseconds");
-
-        if (m2md_get_number(linetok, &value) != 0)
-        {
-            el_print(ELW, "[%s:%d], invalid poll milliseconds: %s",
-                    file, lineno, linetok);
-            continue;
-        }
-
-        if (value < 0 || 999 < value)
-        {
-            el_print(ELW, "[%s:%d] poll milliseconds is out of range "
-                    "[0,999]", file, lineno);
-            continue;
-        }
-
-        poll.poll_time.tv_nsec = value * 1000000l;
-
-
-        /* ==============================================================
-                           __                 _
-                          / /_ ____   ____   (_)_____
-                         / __// __ \ / __ \ / // ___/
-                        / /_ / /_/ // /_/ // // /__
-                        \__/ \____// .___//_/ \___/
-                                  /_/
-           ============================================================== */
-
-
-        NEXT_TOKEN("topic");
-
-        if (strlen(linetok) > M2MD_TOPIC_MAX)
-        {
-            el_print(ELW, "[%s:%d] topic is too long, max is %d",
-                    file, lineno, M2MD_TOPIC_MAX);
-            continue;
-        }
-
-        if (mosquitto_sub_topic_check(linetok) != 0)
-        {
-            el_print(ELW, "[%s:%d] topic %s is not valid mqtt topic",
-                    file, lineno, linetok);
-            continue;
-        }
-
-        poll.topic = strdup(linetok);
-
-
-    /* ==================================================================
-                               __    __             __ __
-                     ___ _ ___/ /___/ / ___  ___   / // /
-                    / _ `// _  // _  / / _ \/ _ \ / // /
-                    \_,_/ \_,_/ \_,_/ / .__/\___//_//_/
-                                     /_/
-       ================================================================== */
-
-
-        /* all fields parsed, add new poll
-         */
-
-        if (m2md_modbus_add_poll(&poll, ip, port) != 0)
-        {
-            el_print(ELW, "m2md_modbus_add_poll(%s:%d)", ip, port);
-            free(poll.topic);
-            continue;
-        }
-
-        /* move to the next line
-         */
-    }
-
-    fclose(f);
+	fclose(f);
 }
 
 
 /* ==========================================================================
-                                              _
                            ____ ___   ____ _ (_)____
                           / __ `__ \ / __ `// // __ \
                          / / / / / // /_/ // // / / /
                         /_/ /_/ /_/ \__,_//_//_/ /_/
-
    ========================================================================== */
 
 
@@ -586,220 +417,164 @@ int m2md_main
 int main
 #endif
 (
-    int     argc,        /* number of arguments in argv */
-    char   *argv[]       /* array of passed arguments */
+	int     argc,        /* number of arguments in argv */
+	char   *argv[]       /* array of passed arguments */
 )
 {
-    int     ret;         /* return code from the program */
-    time_t  prev_flush;  /* last time we flushed logs */
-    time_t  now;         /* current timestamp */
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	int     ret;         /* return code from the program */
+	time_t  prev_flush;  /* last time we flushed logs */
+	time_t  now;         /* current timestamp */
+	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    {
-        /* install SIGTERM and SIGINT signals for clean exit.
-         */
-
-        struct sigaction  sa;  /* signal action instructions */
-        /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	{
+		/* install SIGTERM and SIGINT signals for clean exit.  */
+		struct sigaction  sa;  /* signal action instructions */
+		/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
-        g_m2md_run = 1;
-        memset(&sa, 0, sizeof(sa));
-        sa.sa_handler = sigint_handler;
-        sigaction(SIGINT, &sa, NULL);
-        sigaction(SIGTERM, &sa, NULL);
+		g_m2md_run = 1;
+		memset(&sa, 0, sizeof(sa));
+		sa.sa_handler = sigint_handler;
+		sigaction(SIGINT, &sa, NULL);
+		sigaction(SIGTERM, &sa, NULL);
 
-        sa.sa_handler = sigusr_handler;
-        sigaction(SIGUSR1, &sa, NULL);
-        sigaction(SIGUSR2, &sa, NULL);
-    }
+		sa.sa_handler = sigusr_handler;
+		sigaction(SIGUSR1, &sa, NULL);
+		sigaction(SIGUSR2, &sa, NULL);
+	}
 
-    /* first things first, initialize configuration of the program
-     */
+	/* first things first, initialize configuration of the program */
+	ret = m2md_cfg_init(argc, argv);
 
-    ret = m2md_cfg_init(argc, argv);
+	if (ret == -1)
+		/* critical error occured when config was being parsed,
+		 * in such case we don't want to continue.  */
+		return 1;
 
-    if (ret == -1)
-    {
-        /* critical error occured when config was being parsed,
-         * in such case we don't want to continue.
-         */
+	if (ret == -2)
+		/* it was decided by config that program should not run,
+		 * but we should not exit with and error. This happens
+		 * when either -v or -h was passed */
+		return 0;
 
-        return 1;
-    }
+	/* I am pessimist in nature, so I assume
+	 * things will screw up from now on */
+	ret = 1;
 
-    if (ret == -2)
-    {
-        /* it was decided by config that program should not run,
-         * but we should not exit with and error. This happens
-         * when either -v or -h was passed
-         */
+	/* Initialize logger. Should it fail? Fine, we don't care and
+	 * still continue with our program. Of course if logger fails
+	 * program will probably fail to, but meh... one can allow
+	 * himself to be optimistic from time to time. */
+	if (el_init() == 0)
+	{
+		/* logger init succeed, configure it */
+		el_option(EL_FROTATE_NUMBER, m2md_cfg->log_frotate_number);
+		el_option(EL_FROTATE_SIZE, m2md_cfg->log_frotate_size);
+		el_option(EL_FSYNC_EVERY, m2md_cfg->log_fsync_every);
+		el_option(EL_FSYNC_LEVEL, m2md_cfg->log_fsync_level);
+		el_option(EL_TS, m2md_cfg->log_ts);
+		el_option(EL_TS_TM, m2md_cfg->log_ts_tm);
+		el_option(EL_TS_FRACT, m2md_cfg->log_ts_tm_fract);
+		el_option(EL_FINFO, m2md_cfg->log_finfo);
+		el_option(EL_FUNCINFO, m2md_cfg->log_funcinfo);
+		el_option(EL_COLORS, m2md_cfg->log_colors);
+		el_option(EL_PREFIX, m2md_cfg->log_prefix);
+		el_option(EL_OUT, m2md_cfg->log_output);
+		el_option(EL_LEVEL, m2md_cfg->log_level);
 
-        return 0;
-    }
+		if (m2md_cfg->log_output & EL_OUT_FILE)
+		{
+			/* we will be outputing logs to file,
+			 * so we need to open file now */
+			if (el_option(EL_FPATH, m2md_cfg->log_path) != 0)
+			{
+				if (errno == ENAMETOOLONG || errno == EINVAL)
+					/* in general embedlog will try to recover from
+					 * any error that it may stumble upon (like
+					 * directory does not yet exist - but will be
+					 * created later, or permission is broker, but
+					 * will be fixed later). That errors could be
+					 * recovered from with some external help so
+					 * there is no point disabling file logging.
+					 * Any errors, except for these two.  In this
+					 * case, disable logging to file as it is
+					 * pointless, so we disable logging to file
+					 * leaving other destinations intact */
+					el_option(EL_OUT, m2md_cfg->log_output & ~EL_OUT_FILE);
 
-    /* I am pessimist in nature, so I assume things will screw
-     * up from now on
-     */
+				/* print warning to stderr so it's not missed by integrator
+				 * in case file output was the only output enabled */
+				fprintf(stderr, "w/failed to open log file %s, %s\n",
+						m2md_cfg->log_path, strerror(errno));
+			}
+		}
+	}
 
-    ret = 1;
+	/* dump config, it's good to know what is program
+	 * configuration when debugging later */
+	m2md_cfg_dump();
+	g_main_thread_t = pthread_self();
 
-    /* Initialize logger. Should it fail? Fine, we don't care and
-     * still continue with our program. Of course if logger fails
-     * program will probably fail to, but meh... one can allow
-     * himself to be optimistic from time to time.
-     */
+	if (m2md_modbus_init() != 0)
+		goto_perror(m2md_modbus_init_error, ELF, "m2md_modbus_init()");
 
-    if (el_init() == 0)
-    {
-        /* logger init succeed, configure it
-        */
+	if (m2md_parse_poll_file() != 0)
+		goto_perror(m2md_parse_poll_file_error, ELF, "m2md_parse_poll_file()");
 
-        el_option(EL_FROTATE_NUMBER, m2md_cfg->log_frotate_number);
-        el_option(EL_FROTATE_SIZE, m2md_cfg->log_frotate_size);
-        el_option(EL_FSYNC_EVERY, m2md_cfg->log_fsync_every);
-        el_option(EL_FSYNC_LEVEL, m2md_cfg->log_fsync_level);
-        el_option(EL_TS, m2md_cfg->log_ts);
-        el_option(EL_TS_TM, m2md_cfg->log_ts_tm);
-        el_option(EL_TS_FRACT, m2md_cfg->log_ts_tm_fract);
-        el_option(EL_FINFO, m2md_cfg->log_finfo);
-        el_option(EL_FUNCINFO, m2md_cfg->log_funcinfo);
-        el_option(EL_COLORS, m2md_cfg->log_colors);
-        el_option(EL_PREFIX, m2md_cfg->log_prefix);
-        el_option(EL_OUT, m2md_cfg->log_output);
-        el_option(EL_LEVEL, m2md_cfg->log_level);
+	if (m2md_mqtt_init(m2md_cfg->mqtt_ip, m2md_cfg->mqtt_port) != 0)
+		goto_perror(m2md_mqtt_init_error, ELF, "m2md_mqtt_init()");
 
-        if (m2md_cfg->log_output & EL_OUT_FILE)
-        {
-            /* we will be outputing logs to file, so we need to
-             * open file now
-             */
+	/* start mosquitto thread that will receive messages for us */
+	if (m2md_mqtt_loop_start() != 0)
+		/* or maybe not...  */
+		goto_perror(m2md_mqtt_loop_start_error, ELF, "mosquitto_start_loop()");
 
-            if (el_option(EL_FPATH, m2md_cfg->log_path) != 0)
-            {
-                if (errno == ENAMETOOLONG || errno == EINVAL)
-                {
-                    /* in general embedlog will try to recover from
-                     * any error that it may stumble upon (like
-                     * directory does not yet exist - but will be
-                     * created later, or permission is broker, but
-                     * will be fixed later). That errors could be
-                     * recovered from with some external help so
-                     * there is no point disabling file logging.
-                     * Any errors, except for these two.  In this
-                     * case, disable logging to file as it is
-                     * pointless, so we disable logging to file
-                     * leaving other destinations intact
-                     */
+	/* all resources initialized, now start main loop */
+	el_print(ELN, "all resources initialized, starting main loop");
 
-                    el_option(EL_OUT, m2md_cfg->log_output & ~EL_OUT_FILE);
-                }
-
-                /* print warning to stderr so it's not missed by integrator
-                 * in case file output was the only output enabled
-                 */
-
-                fprintf(stderr, "w/failed to open log file %s, %s\n",
-                        m2md_cfg->log_path, strerror(errno));
-            }
-        }
-    }
-
-    /* dump config, it's good to know what is program configuration
-     * when debugging later
-     */
-
-    m2md_cfg_dump();
-    g_main_thread_t = pthread_self();
-
-    if (m2md_modbus_init() != 0)
-    {
-        el_perror(ELF, "m2md_modbus_init()");
-        goto m2md_modbus_init_error;
-    }
-
-    if (m2md_parse_poll_file() != 0)
-    {
-        el_perror(ELF, "m2md_parse_poll_file()");
-        goto m2md_parse_poll_file_error;
-    }
-
-    if (m2md_mqtt_init(m2md_cfg->mqtt_ip, m2md_cfg->mqtt_port) != 0)
-    {
-        el_perror(ELF, "m2md_mqtt_init()");
-        goto m2md_mqtt_init_error;
-    }
-
-    /* start mosquitto thread that will receive messages for us
-     */
-
-    if (m2md_mqtt_loop_start() != 0)
-    {
-        /* or maybe not...
-         */
-
-        el_perror(ELF, "mosquitto_start_loop()");
-        goto m2md_mqtt_loop_start_error;
-    }
-
-    /* all resources initialized, now start main loop
-     */
-
-    el_print(ELN, "all resources initialized, starting main loop");
-
-    prev_flush = 0;
-    while (g_m2md_run)
-    {
-        struct timespec  req;
-        /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	prev_flush = 0;
+	while (g_m2md_run)
+	{
+		struct timespec  req;
+		/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
-        /* go and poll what is to be polled, and sleep until
-         * it is time to do next polling
-         */
+		/* go and poll what is to be polled, and sleep until
+		 * it is time to do next polling */
+		req = m2md_modbus_loop();
+		nanosleep(&req, NULL);
 
-        req = m2md_modbus_loop();
-        nanosleep(&req, NULL);
+		now = time(NULL);
+		if (now - prev_flush >= 60 || g_flush_now)
+		{
+			if (g_flush_now)
+				el_print(ELN, "flushing due to flush_now flag");
 
-        now = time(NULL);
-        if (now - prev_flush >= 60 || g_flush_now)
-        {
-            if (g_flush_now)
-            {
-                el_print(ELN, "flushing due to flush_now flag");
-            }
+			/* it's been more than 60 seconds from last flush,
+			 * or flush_now flag is set, let's flush logs now */
+			el_flush();
 
-            /* it's been more than 60 seconds from last flush,
-             * or flush_now flag is set, let's flush logs now
-             */
+			/* save time of last flush */
+			prev_flush = now;
+			g_flush_now = 0;
+		}
+	}
 
-            el_flush();
-
-            /* save time of last flush
-             */
-
-            prev_flush = now;
-            g_flush_now = 0;
-        }
-    }
-
-    /* Code should get here only when it finished without problems,
-     * like it received signal. If it should exit abnormally, jump
-     * after ret = 0; oh look, things didn't go wrong after all!
-     * Set ret to 0 to caller of the app know about that
-     */
-
-    ret = 0;
+	/* Code should get here only when it finished without problems,
+	 * like it received signal. If it should exit abnormally, jump
+	 * after ret = 0; oh look, things didn't go wrong after all!
+	 * Set ret to 0 to caller of the app know about that */
+	ret = 0;
 
 m2md_mqtt_loop_start_error:
-    m2md_mqtt_cleanup();
+	m2md_mqtt_cleanup();
 
 m2md_mqtt_init_error:
 m2md_parse_poll_file_error:
-    m2md_modbus_cleanup();
+	m2md_modbus_cleanup();
 
 m2md_modbus_init_error:
-    el_print(ELN, "goodbye %s world!", ret ? "cruel" : "beautiful");
-    el_cleanup();
-    return ret;
+	el_print(ELN, "goodbye %s world!", ret ? "cruel" : "beautiful");
+	el_cleanup();
+	return ret;
 }

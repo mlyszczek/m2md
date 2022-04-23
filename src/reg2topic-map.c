@@ -1,9 +1,7 @@
 /* ==========================================================================
     Licensed under BSD 2clause license See LICENSE file for more information
     Author: Michał Łyszczek <michal.lyszczek@bofc.pl>
-   ========================================================================== */
-
-/* ==========================================================================
+   ==========================================================================
           _               __            __         ____ _  __
          (_)____   _____ / /__  __ ____/ /___     / __/(_)/ /___   _____
         / // __ \ / ___// // / / // __  // _ \   / /_ / // // _ \ / ___/
@@ -15,6 +13,7 @@
 
 #include "reg2topic-map.h"
 #include "valid.h"
+#include "macros.h"
 
 
 /* ==========================================================================
@@ -33,9 +32,7 @@
  * !!! KEEP THEM MAPS SORTED! !!!
  * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
  *
- * maps should be sorted by 'reg' field
- */
-
+ * maps should be sorted by 'reg' field */
 const struct m2md_reg2topic_map_element victron[] =
 {
     { 0.1,  840, "battery/voltage" },
@@ -45,12 +42,10 @@ const struct m2md_reg2topic_map_element victron[] =
     {   1, 3420, "in/digital/count" }
 };
 
-/* order of mfrs here must match order of mfrs in enum m2md_mfr
- */
-
+/* order of mfrs here must match order of mfrs in enum m2md_mfr */
 const struct m2md_reg2topic_map m2md_reg2topic_map[] =
 {
-    { victron, m2md_array_size(victron) }
+	{ victron, m2md_array_size(victron) }
 };
 
 
@@ -61,59 +56,44 @@ const struct m2md_reg2topic_map m2md_reg2topic_map[] =
       / /_/ // /_/ // /_/ // // // /__   / __// /_/ // / / // /__ (__  )
      / .___/ \__,_//_.___//_//_/ \___/  /_/   \__,_//_/ /_/ \___//____/
     /_/
-   ========================================================================== */
-
-
-/* ==========================================================================
+   ==========================================================================
     Finds index in map of register for given mfr manufacture
    ========================================================================== */
-
-
 int m2md_reg2topic_find
 (
-    int  mfr,   /* manufacture to search */
-    int  reg    /* register to find */
+	int  mfr,   /* manufacture to search */
+	int  reg    /* register to find */
 )
 {
-    int  begin;
-    int  end;
-    int  i;
-    const struct m2md_reg2topic_map           *map;
-    const struct m2md_reg2topic_map_element   *element;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+	int  begin;
+	int  end;
+	int  i;
+	const struct m2md_reg2topic_map           *map;
+	const struct m2md_reg2topic_map_element   *element;
+	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
-    VALID(EINVAL, mfr < M2MD_MFR_MAX);
+	VALID(EINVAL, mfr < M2MD_MFR_MAX);
 
-    map = m2md_reg2topic_map + mfr;
+	map = m2md_reg2topic_map + mfr;
 
-    begin = 0;
-    end = map->num_elements - 1;
+	begin = 0;
+	end = map->num_elements - 1;
 
-    while (begin <= end)
-    {
-        i = (begin + end) / 2;
+	while (begin <= end)
+	{
+		i = (begin + end) / 2;
 
-        if (reg == map->elements[i].reg)
-        {
-            /* matchin register found in position 'i'
-             */
+		if (reg == map->elements[i].reg)
+			/* matchin register found in position 'i' */
+			return i;
 
-            return i;
-        }
+		if (reg < map->elements[i].reg)
+			end = i - 1;
+		else
+			begin = i + 1;
+	}
 
-        if (reg < map->elements[i].reg)
-        {
-            end = i - 1;
-        }
-        else
-        {
-            begin = i + 1;
-        }
-    }
-
-    /* we get here only when register wasa not found in the list
-     */
-
-    return -1;
+	/* we get here only when register wasa not found in the list */
+	return -1;
 }

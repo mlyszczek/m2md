@@ -11,8 +11,8 @@ int m2md_mqtt_cleanup(void);
 int m2md_mqtt_publish(const char *topic, const void *payload, int paylen);
 int m2md_mqtt_loop_start(void);
 int m2md_mqtt_publish_add_ack(struct m2md_pl_data *pdata,
-        const char *ip, int port);
+		const char *ip, int port);
 int m2md_mqtt_publish_delete_ack(struct m2md_pl_data *pdata,
-        const char *ip, int port);
+		const char *ip, int port);
 
 #endif

@@ -28,7 +28,7 @@ AC_SEARCH_LIBS([modbus_new_tcp], [modbus])
 AC_SEARCH_LIBS([mosquitto_lib_init], [mosquitto])
 
 AC_DEFINE([M2MD_CONFIG_PATH_DEFAULT], ["/etc/m2md/m2md.ini"],
-    [default config file for program])
+	[default config file for program])
 
 
 ###
@@ -36,8 +36,8 @@ AC_DEFINE([M2MD_CONFIG_PATH_DEFAULT], ["/etc/m2md/m2md.ini"],
 #
 
 AC_ARG_ENABLE([analyzer],
-    AS_HELP_STRING([--enable-analyzer], [Enable static code analyzer]),
-    [enable_analyzer="yes"], [enable_analyzer="no"])
+	AS_HELP_STRING([--enable-analyzer], [Enable static code analyzer]),
+	[enable_analyzer="yes"], [enable_analyzer="no"])
 AM_CONDITIONAL([ENABLE_ANALYZER], [test "x$enable_analyzer" = "xyes"])
 
 
@@ -47,8 +47,8 @@ AM_CONDITIONAL([ENABLE_ANALYZER], [test "x$enable_analyzer" = "xyes"])
 
 
 AC_ARG_ENABLE([standalone],
-    AS_HELP_STRING([--enable-standalone], [Create standalone binaries]),
-    [], [enable_standalone="yes"])
+	AS_HELP_STRING([--enable-standalone], [Create standalone binaries]),
+	[], [enable_standalone="yes"])
 
 AM_CONDITIONAL([ENABLE_STANDALONE], [test "x$enable_standalone" = "xyes"])
 
@@ -59,8 +59,8 @@ AM_CONDITIONAL([ENABLE_STANDALONE], [test "x$enable_standalone" = "xyes"])
 
 
 AC_ARG_ENABLE([library],
-    AS_HELP_STRING([--enable-library], [Create libraries from programs]),
-    [], [enable_library="yes"])
+	AS_HELP_STRING([--enable-library], [Create libraries from programs]),
+	[], [enable_library="yes"])
 
 AM_CONDITIONAL([ENABLE_LIBRARY], [test "x$enable_library" = "xyes"])
 
@@ -70,13 +70,13 @@ AM_CONDITIONAL([ENABLE_LIBRARY], [test "x$enable_library" = "xyes"])
 
 
 AC_ARG_ENABLE([ini],
-    AS_HELP_STRING([--enable-ini], [Enable parsing ini config at startup]),
-    [], [enable_ini="yes"])
+	AS_HELP_STRING([--enable-ini], [Enable parsing ini config at startup]),
+	[], [enable_ini="yes"])
 
 AM_CONDITIONAL([ENABLE_INI], [test "x$enable_ini" = "xyes"])
 AS_IF([test "x$enable_ini" = "xyes"],
 [
-    AC_DEFINE([M2MD_ENABLE_INI], [1], [Enable parsing ini config at startup])
+	AC_DEFINE([M2MD_ENABLE_INI], [1], [Enable parsing ini config at startup])
 ],[])
 
 
@@ -86,13 +86,13 @@ AS_IF([test "x$enable_ini" = "xyes"],
 
 
 AC_ARG_ENABLE([getopt],
-    AS_HELP_STRING([--enable-getopt], [Enable parsing getopt options at startup]),
-    [], [enable_getopt="no"])
+	AS_HELP_STRING([--enable-getopt], [Enable parsing getopt options at startup]),
+	j[], [enable_getopt="no"])
 
 AM_CONDITIONAL([ENABLE_GETOPT], [test "x$enable_getopt" = "xyes"])
 AS_IF([test "x$enable_getopt" = "xyes"],
 [
-    AC_DEFINE([M2MD_ENABLE_GETOPT], [1], [Enable parsing getopt options at startup])
+	AC_DEFINE([M2MD_ENABLE_GETOPT], [1], [Enable parsing getopt options at startup])
 ],[])
 
 
@@ -102,13 +102,13 @@ AS_IF([test "x$enable_getopt" = "xyes"],
 
 
 AC_ARG_ENABLE([getopt_long],
-    AS_HELP_STRING([--enable-getopt_long], [Enable parsing getopt_long config at startup]),
-    [], [enable_getopt_long="yes"])
+	AS_HELP_STRING([--enable-getopt_long], [Enable parsing getopt_long config at startup]),
+	[], [enable_getopt_long="yes"])
 
 AM_CONDITIONAL([ENABLE_GETOPT_LONG], [test "x$enable_getopt_long" = "xyes"])
 AS_IF([test "x$enable_getopt_long" = "xyes"],
 [
-    AC_DEFINE([M2MD_ENABLE_GETOPT_LONG], [1], [Enable parsing getopt_long config at startup])
+	AC_DEFINE([M2MD_ENABLE_GETOPT_LONG], [1], [Enable parsing getopt_long config at startup])
 ],[])
 
 ###
@@ -123,11 +123,11 @@ AS_IF([test "x$enable_getopt_long" = "xyes"],
 AC_ARG_VAR([M2MD_SERVERS_MAX], [Maximum simultaneous servers handled])
 AS_IF([test "x$M2MD_SERVERS_MAX" = x], [M2MD_SERVERS_MAX="128"])
 AC_DEFINE_UNQUOTED([M2MD_SERVERS_MAX], [$M2MD_SERVERS_MAX],
-           [Maximum simultaneous servers handled])
+		[Maximum simultaneous servers handled])
 
 AS_IF([test $M2MD_SERVERS_MAX -lt 1],
 [
-    AC_MSG_ERROR(M2MD_SERVERS_MAX must be at least 1)
+	AC_MSG_ERROR(M2MD_SERVERS_MAX must be at least 1)
 ])
 
 
@@ -139,7 +139,7 @@ AS_IF([test $M2MD_SERVERS_MAX -lt 1],
 AC_ARG_VAR([M2MD_TOPIC_MAX], [Maximum length of mqtt topic])
 AS_IF([test "x$M2MD_TOPIC_MAX" = x], [M2MD_TOPIC_MAX="4096"])
 AC_DEFINE_UNQUOTED([M2MD_TOPIC_MAX], [$M2MD_TOPIC_MAX],
-           [Maximum length of mqtt topic])
+		[Maximum length of mqtt topic])
 
 
 AC_OUTPUT
