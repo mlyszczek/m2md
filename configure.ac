@@ -60,7 +60,7 @@ AM_CONDITIONAL([ENABLE_STANDALONE], [test "x$enable_standalone" = "xyes"])
 
 AC_ARG_ENABLE([library],
 	AS_HELP_STRING([--enable-library], [Create libraries from programs]),
-	[], [enable_library="yes"])
+	[], [enable_library="no"])
 
 AM_CONDITIONAL([ENABLE_LIBRARY], [test "x$enable_library" = "xyes"])
 
