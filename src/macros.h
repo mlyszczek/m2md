@@ -8,17 +8,16 @@
 #define BOFC_MACROS_H 1
 
 
-#define return_print(R, E, ...) do { \
-	el_print(__VA_ARGS__); errno = E; return R; } while(0)
+#define return_print(R, E, ...) { el_print(__VA_ARGS__); errno = E; return R; }
 
-#define return_errno(E)     do { errno = E; return -1; } while(0)
-#define return_perror(...)  do { el_perror(__VA_ARGS__); return -1; } while(0)
+#define return_errno(E)     { errno = E; return -1; }
+#define return_perror(...)  { el_perror(__VA_ARGS__); return -1; }
 
-#define goto_perror(L, ...) do { el_perror(__VA_ARGS__); goto L; } while(0)
+#define goto_perror(L, ...) { el_perror(__VA_ARGS__); goto L; }
 
-#define continue_print(...) do { el_print(__VA_ARGS__); continue; } while(0)
-#define continue_perror(...)do { el_perror(__VA_ARGS__); continue; } while(0)
-#define break_print(...)    do { el_print(__VA_ARGS__); break; } while(0)
+#define continue_print(...) { el_print(__VA_ARGS__); continue; }
+#define continue_perror(...){ el_perror(__VA_ARGS__); continue; }
+#define break_print(...)    { el_print(__VA_ARGS__); break; }
 
 
 #endif

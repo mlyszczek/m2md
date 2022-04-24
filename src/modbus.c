@@ -241,7 +241,6 @@ static void *m2md_modbus_server_thread
 
 			/* we are suppose to poll for data and
 			 * publish it on mqtt bus */
-
 		case M2MD_SERVER_MSG_POLL:
 		{
 			uint16_t  rval[2];    /* read value from modbus */
@@ -301,9 +300,7 @@ static void *m2md_modbus_server_thread
 			{
 				/* data is signed, we need to treat data in rval as
 				 * signed so compiler can generate proper assembly
-				 * instruction for signed multiplication
-				 */
-
+				 * instruction for signed multiplication */
 				if (msg.data.poll.is_signed)
 					data = (int16_t)rval[0];
 				else
@@ -315,7 +312,7 @@ static void *m2md_modbus_server_thread
 				/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
-				val = rval[0] | ((uint32_t)rval[1] << 16);
+				val = rval[1] | ((uint32_t)rval[0] << 16);
 
 				if (msg.data.poll.is_signed)
 					data = (int32_t)val;
@@ -466,6 +463,7 @@ int m2md_modbus_add_poll
 
 	modbus_set_error_recovery(server->modbus,
 			MODBUS_ERROR_RECOVERY_LINK | MODBUS_ERROR_RECOVERY_PROTOCOL);
+	modbus_set_response_timeout(server->modbus, 2, 0);
 
 	/* Create queue on which server will receive
 	 * commands from main thread. */
